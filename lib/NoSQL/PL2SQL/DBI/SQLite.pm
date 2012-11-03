@@ -49,12 +49,7 @@ endschema
 
 sub schema {
 	my $self = shift ;
-	my $package = ref $self? ref $self: $self ;
-
-	my $nodes = bless XML::Parser::Nodes->new( $xmlschema ), 
-			join( '::', $package, 'Schema' ) ;
-
-	return $nodes->schema ;
+	return NoSQL::PL2SQL::DBI::schema( $self, $xmlschema ) ;
 	}
 
 sub stringencode {
@@ -122,11 +117,11 @@ Developers who are comfortable with RDB can design a thin object interface using
 
 One of NoSQL::PL2SQL's features is a "universal" table definition that can accomodate arbitrary and indeterminate data structures.  This flexibility means that a single table can be used for heterogeneous instantiations of different classes.  In many cases, a single table can serve the data needs of an entire application.  Consequently, a NoSQL::PL2SQL::DBI object is primarily defined by the tablename using a constructor argument.
 
-The driver object contains only one other property, a database handle, which is defined using the C<connect()> method with the same arguments as the default C<<DBI->connect()>> method.  Otherwise, the default handle is a NoSQL::PL2SQL::DBI::Null object that simply reflects statement arguments, and can be useful for debugging.
+The driver object contains only one other property, a database handle, which is defined using the C<connect()> method with the same arguments as the default C<< DBI->connect() >> method.  Otherwise, the default handle is a NoSQL::PL2SQL::DBI::Null object that simply reflects statement arguments, and can be useful for debugging.
 
 This object can also invoke any DBI method.  SQL statement arguments do not need to specify a table name which is a property of the driver object.  Use the C<sprintf()> notation '%s' intead.
 
-Additionally, NoSQL::PL2SQL::DBI provides versions of C<<DBI->fetchrow_arrayref()>> and C<<DBI->fetchrow_hashref>>- C<rows_array()> and C<rows_hash()> respectively.  These methods take an SQL statement as an argument, perform preparation and execution, and return the same output as their counterparts.
+Additionally, NoSQL::PL2SQL::DBI provides versions of C<< DBI->fetchrow_arrayref() >> and C<< DBI->fetchrow_hashref >>- C<rows_array()> and C<rows_hash()> respectively.  These methods take an SQL statement as an argument, perform preparation and execution, and return the same output as their counterparts.
 
 =head2 EXPORT
 
@@ -146,10 +141,15 @@ None by default.
 
 =head1 SEE ALSO
 
-NoSQL::PL2SQL
-NoSQL::PL2SQL::DBI
+=over 8
 
-http://pl2sql.tqis.com/
+=item NoSQL::PL2SQL
+
+=item NoSQL::PL2SQL::DBI
+
+=item http://pl2sql.tqis.com/
+
+=back
 
 =head1 AUTHOR
 

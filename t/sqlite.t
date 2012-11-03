@@ -5,7 +5,7 @@
 
 # change 'tests => 1' to 'tests => last_test_to_print';
 
-use Test::More tests => 51 ;
+use Test::More tests => 52 ;
 
 BEGIN { 
 	use_ok('Scalar::Util') ;
@@ -25,7 +25,7 @@ use Digest::MD5 ;
 use Data::Dumper ;
 
 my $rebuild = 1 ;
-my $adjust = -1 ;
+my $adjust = 0 ;
 my @retr = () ;
 my @rowct = 0 ;
 my $assignedid = 0 ;
@@ -198,6 +198,11 @@ testchanges( sub {
 		my $oo = pop @{ $_[0]->{QBMSXML}->{MsgsRq} } ;
 		push @{ $_[0]->{QBMSXML}->{MsgsRq} }, "mister mystery" ;
 		unshift @{ $_[0]->{QBMSXML}->{MsgsRq} }, $oo ;
+		} ) ;
+
+# undef
+testchanges( sub {
+		$_[0]->{QBMSXML}->{Null} = undef ;
 		} ) ;
 
 # large scalar

@@ -21,7 +21,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 
 # Preloaded methods go here.
@@ -205,16 +205,26 @@ Original version; created by h2xs 1.23 with options
   -AXCO
 	NoSQL::PL2SQL
 
+=item 0.02	
+
+Cleaned perldoc formatting issues
+
 =back
 
 
 
 =head1 SEE ALSO
 
-NoSQL::PL2SQL
-NoSQL::PL2SQL::Object
+=over 8
 
-http://pl2sql.tqis.com
+=item NoSQL::PL2SQL
+
+=item NoSQL::PL2SQL::Object
+
+=item http://pl2sql.tqis.com/
+
+=back
+
 
 =head1 AUTHOR
 

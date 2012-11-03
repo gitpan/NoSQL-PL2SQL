@@ -33,7 +33,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.01';
+our $VERSION = '0.03';
 
 # Preloaded methods go here.
 
@@ -91,9 +91,10 @@ endschema
 
 sub schema {
 	my $self = shift ;
-	my $package = ref $self? ref $self: $self ;
+	my $package = ref $self || $self ;
+	my $schema = @_? shift( @_ ): $xmlschema ;
 
-	my $nodes = bless XML::Parser::Nodes->new( $xmlschema ), 
+	my $nodes = bless XML::Parser::Nodes->new( $schema ), 
 			join( '::', $package, 'Schema' ) ;
 
 	return $nodes->schema ;
@@ -324,6 +325,8 @@ sub command {
 	return eval sprintf '$self->%s()', $command if $command ;
 	}
 
+## Example Base Node Schemas
+#
 # package NoSQL::PL2SQL::DBI::Schema::table ;
 # use base qw( NoSQL::PL2SQL::DBI::Schema ) ;
 # 
@@ -404,11 +407,11 @@ Developers who are comfortable with RDB can design a thin object interface using
 
 One of NoSQL::PL2SQL's features is a "universal" table definition that can accomodate arbitrary and indeterminate data structures.  This flexibility means that a single table can be used for heterogeneous instantiations of different classes.  In many cases, a single table can serve the data needs of an entire application.  Consequently, a NoSQL::PL2SQL::DBI object is primarily defined by the tablename using a constructor argument.
 
-A NoSQL::PL2SQL:DBI instance consists of one other property, a database handle.  This handle is defined using the C<connect()> method with the same arguments as the default C<<DBI->connect()>> method.  Otherwise, the default handle is a NoSQL::PL2SQL::DBI::Null object that simply reflects statement arguments, and can be useful for debugging.
+A NoSQL::PL2SQL:DBI instance consists of one other property, a database handle.  This handle is defined using the C<connect()> method with the same arguments as the default C<< DBI->connect() >> method.  Otherwise, the default handle is a NoSQL::PL2SQL::DBI::Null object that simply reflects statement arguments, and can be useful for debugging.
 
 The NoSQL::PL2SQL::DBI AUTOLOAD overrides any DBI method.  Because the RDB table is abstracted within, SQL statements do not need to specify a table.  The C<sprintf()> notation is used instead- replacing '%s' in any SQL construction with the table name first.  The C<sqlstatement()> method is always used for this translation.
 
-Additionally, NoSQL::PL2SQL::DBI provides versions of C<<DBI->fetchrow_arrayref()>> and C<<DBI->fetchrow_hashref>>- C<rows_array()> and C<rows_hash()> respectively.  These methods take an SQL statement as an argument, perform preparation and execution, and return the same output as their counterparts.
+Additionally, NoSQL::PL2SQL::DBI provides versions of C<< DBI->fetchrow_arrayref() >> and C<< DBI->fetchrow_hashref >>- C<rows_array()> and C<rows_hash()> respectively.  These methods take an SQL statement as an argument, perform preparation and execution, and return the same output as their counterparts.
 
 C<perldata()> is nearly the same as C<rows_hash()>, except the output is a hash reference that keys each record on its recordid.  Originally, the hashref was blessed as a NoSQL::PL2SQL::Perldata object, hence the name.  All NoSQL::PL2SQL data structures are implemented as a tree of nodes.  And the static methods in NoSQL::PL2SQL::Perldata are used to access the RDB records as though they were tree nodes.  
 
@@ -417,23 +420,32 @@ All RDB inquiries made by NoSQL::PL2SQL expect a hashref structure similar to C<
 The C<insert()> method is trivial.  Implementations only need to override the C<update()> method.  C<insert()> needs to return a recordid value, which is determined by the underlying RDB application.  Both C<insert()> and C<update()> return NVP's as a hash reference containing an element named "id".  The other element, "sqlresults", contains the only useful output when the connected database is the default "NoSQL::PL2SQL::DBI::Null".
 
 The following methods are implemented, by default, to use an SQL syntax compatible with MySQL and SQLite.  Other RDB applications may require overriding these methods:
-C<fetch()>
-C<update()>
-C<delete()>
-C<lastinsertid()>
-C<stringencode()>
+
+=over 8
+
+=item C<fetch()>
+
+=item C<update()>
+
+=item C<delete()>
+
+=item C<lastinsertid()>
+
+=item C<stringencode()>
+
+=back
 
 =head1 SCHEMA
 
 The purpose of the schema is to build a data source that conforms to the NVP arguments of the above methods.  The C<loadschema()> method triggers the build.  So implementations that override C<loadschema()> can ignore the specification below.  However, database applications that use SQL as an interface should be implemented consistently.
 
-In NoSQL::PL2SQL::DBI and its implementations, the C<schema()> method should return one or more SQL directives.  The default C<loadschema()> feeds each into C<<NoSQL::PL2SQL::DBI->do()>>.  Consequently, the SQL statements should always refer to the table name as '%s'.  C<<NoSQL::PL2SQL::DBI->schema()>> takes no argument.  Instead, it uses an internal definition.  The default definition, designed for MySQL, has an XML format using an ad-hoc definition.  This definition may be replaced with a more universal standard, or hopefully prove to be suitably extensible.
+In NoSQL::PL2SQL::DBI and its implementations, the C<schema()> method should return one or more SQL directives.  The default C<loadschema()> feeds each into C<< NoSQL::PL2SQL::DBI->do() >>.  Consequently, the SQL statements should always refer to the table name as '%s'.  C<< NoSQL::PL2SQL::DBI->schema() >> takes no argument.  Instead, it uses an internal definition.  The default definition, designed for MySQL, has an XML format using an ad-hoc XML definition.  This definition may be replaced with a more universal standard, or hopefully prove to be suitably extensible.
 
-There are two default C<schema()> definitions.  The first, C<<NoSQL::PL2SQL::DBI->schema()>>, converts the XML definition into an XML::Parser::Nodes tree.  This tree is reblessed into another package as follows:
+There are two default C<schema()> definitions.  The first, C<< NoSQL::PL2SQL::DBI->schema() >>, converts the XML definition into an XML::Parser::Nodes tree.  This tree is reblessed into another package as follows:
 
   return bless( $nodes, ref( $dsn ) .'::Schema' )->schema() ;
 
-Consequently, there is a second default schema called C<<NoSQL::PL2SQL::DBI::Schema->schema()>>, (For convenience, these two will be distinguished as C<schema()> and C<<Schema->schema()>>.)  An implementation must be defined as follows, using 123SQL as an example implementation.
+Consequently, there is a second default schema called C<< NoSQL::PL2SQL::DBI::Schema->schema() >>, (For convenience, these two will be distinguished as C<schema()> and C<< Schema->schema() >>.)  An implementation must be defined as follows, using 123SQL as an example implementation.
 
   package NoSQL::PL2SQL::DBI::123SQL ;
   use base qw( NoSQL::PL2SQL::DBI ) ;
@@ -441,12 +453,12 @@ Consequently, there is a second default schema called C<<NoSQL::PL2SQL::DBI::Sch
   package NoSQL::PL2SQL::DBI::123SQL::Schema ;
   use base qw( NoSQL::PL2SQL::DBI::Schema ) ;
 
-By default, C<<Schema->schema()>> calls the schema method on its child nodes.  For example, each SQL statement is represented by an <sql> node.  In order to return an SQL statement, the following must be defined (using the same example):
+By default, C<< Schema->schema() >> calls the schema method on its child nodes.  For example, each SQL statement is represented by an <sql> node.  In order to return an SQL statement, the following must be defined (using the same example):
 
   package NoSQL::PL2SQL::DBI::123SQL::Schema::sql ;
   use base qw( NoSQL::PL2SQL::DBI::Schema ) ;
 
-This definition, however, is only required for explict SQL output.  Otherwise, the default C<<Schema->schema()>> method is called in recursion on the next level of child nodes.  The nodes below are shown as XML and with defined methods:
+This definition, however, is only required for explict SQL output.  Otherwise, the default C<< Schema->schema() >> method is called in recursion on the next level of child nodes.  The nodes below are shown as XML and with defined methods:
 
   ## <table command="CREATE" ...>
   ##   <column ... />
@@ -474,25 +486,28 @@ This definition, however, is only required for explict SQL output.  Otherwise, t
 	## return column definition
 	}
 
-The XML node shown above, named table, is processed by C<<Schema->schema()>, and its explicitly defined C<<Schema::table->schema()> method is called.  That method punts to another method, defined by the "command" attribute of the node, and the <<Schema::table->CREATE()>> method is called in turn.  That method gets its child schemas by calling the default <<Schema->schema()> method.  At this point, the package names of the child schemas start accumulating, and each of those C<schema()> methods return substrings that are combined into a single SQL directive.
+The XML node shown above, named table, is processed by C<< Schema->schema() >>, and its explicitly defined C<< Schema::table->schema() >> method is called.  That method punts to another method, defined by the "command" attribute of the node, and the << Schema::table->CREATE() >> method is called in turn.  That method gets its child schemas by calling the default << Schema->schema() >> method.  At this point, the package names of the child schemas start accumulating, and each of those C<schema()> methods return substrings that are combined into a single SQL directive.
 
 To summarize, a schema definition requires the definition of a number of package classes.  The package names correlate to the structure of the node tree (see XML::Parser::Nodes::tree()).  Each package class needs to extend C<NoSQL::PL2SQL::DBI::Schema>, and may or may not override the C<schema()> method.  Output can be varied by defining methods that correspond to the "command" attribute.
 
 In general, there's probably no need to define a package unless the C<schema()> method will be overridden.  But consider the following definitions:
 
-  package NoSQL::PL2SQL::DBI::MySQL::Schema ;		## The Schema
-  use base qw( NoSQL::PL2SQL::DBI::Schema ) ;		## The Base Schema
+  package NoSQL::PL2SQL::DBI::MySQL::Schema ;	## The Schema
+  use base qw( NoSQL::PL2SQL::DBI::Schema ) ;	## The Base Schema
 
   package NoSQL::PL2SQL::DBI::MySQL::Schema::table ;	## A Node Schema
-  use base qw( NoSQL::PL2SQL::DBI::Schema ) ;		## The Base Schema
+  use base qw( NoSQL::PL2SQL::DBI::Schema ) ;	## The Base Schema
 
   ## Not defined but part of the model
-  package NoSQL::PL2SQL::DBI::Schema::table ;		## A Base Node Schema
+  package NoSQL::PL2SQL::DBI::Schema::table ;	## A Base Node Schema
 
 For undefined packages, the inheritance order is:
-Base Schema Node
-Schema
-Base Schema
+
+=over 8 
+
+=item Base Node Schema >> Schema >> Base Schema
+
+=back
 
 A package may be defined without an overriding C<schema()> definition in order to define a different inheritance.
 
@@ -505,12 +520,18 @@ None by default.
 
 =over 8
 
-=item 0.01
+=item 0.01	
 
 Original version; created by h2xs 1.23 with options
 
   -AXCO
 	NoSQL::PL2SQL
+
+=item 0.02	
+
+Cleaned perldoc formatting issues
+
+Added optional arg to C<schema()> method
 
 =back
 
@@ -518,11 +539,16 @@ Original version; created by h2xs 1.23 with options
 
 =head1 SEE ALSO
 
-NoSQL::PL2SQL
-XML::Parser::Nodes
-XML::Dumper
+=over 8
 
-http://pl2sql.tqis.com/
+=item NoSQL::PL2SQL
+
+=item XML::Parser::Nodes
+
+=item http://pl2sql.tqis.com/
+
+=back
+
 
 =head1 AUTHOR
 

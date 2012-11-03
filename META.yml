@@ -20,5 +20,5 @@ no_index:
 requires:
   DBD::SQLite: 1.37
   DBI: 1.57
-  XML::Parser::Nodes: 0.03
-version: 1.00
+  XML::Parser::Nodes: 0.04
+version: 1.01

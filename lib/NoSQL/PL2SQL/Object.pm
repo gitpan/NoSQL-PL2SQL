@@ -22,7 +22,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 # Preloaded methods go here.
 
@@ -779,7 +779,7 @@ The following methods are used as part of initialization.
 
 An object that implements NoSQL::PL2SQL is represented as a tree of NoSQL::PL2SQL::Object nodes.  Each node is tied, so an operation on any object element calls one of the overloading operators, which actually performs the operation on its Object node.
 
-When an object is retrieved using C<<NoSQL::PL2SQL->SQLObject()>>, data is fetched from the RDB, the top Object Node is created, tied, optionally blessed, and returned to the caller as a representation of the original object.  After this creation, the representation is nothing more than an empty top node Object.  (object refers to the instantiation of the caller application; Object refers to a NoSQL::PL2SQL::Object- thus, an Object is a node in a tree that represents an object.)
+When an object is retrieved using C<< NoSQL::PL2SQL->SQLObject() >>, data is fetched from the RDB, the top Object Node is created, tied, optionally blessed, and returned to the caller as a representation of the original object.  After this creation, the representation is nothing more than an empty top node Object.  (object refers to the instantiation of the caller application; Object refers to a NoSQL::PL2SQL::Object- thus, an Object is a node in a tree that represents an object.)
 
 Creation and loading occur separately  Loading occurs when an object element is accessed.  If the element is a container, the child nodes are created.  If the element is a scalar, the Object is loaded with data.  C<data()> is called whenever an element is accessed, which in turn calls C<load()> if necessary.  C<memorymap()> is also called during load.  The memorymap keeps track of nodes with multiple parents- elements that are shared internal references.
 
@@ -804,11 +804,19 @@ Most of an Object's properties are maintained in the original data structure ret
 
 When an element is modified, a node is either modified, added, deleted, or added and deleted (replaced), using the following operations:
 
-1.  The scalar data property is modified
-2.  A scalar is added
-3.  An untied object is added
-2.  A node reference is added
-4.  The node is deleted
+=over 8 
+
+=item 1.  The scalar data property is modified
+
+=item 2.  A scalar is added
+
+=item 3.  An untied object is added
+
+=item 4.  A node reference is added
+
+=item 5.  The node is deleted
+
+=back
 
   ## modify internal data
   $tied->update( $sqlname => $sqlvalue, ... ) ;
@@ -834,7 +842,7 @@ C<newlement()> is called every time a node is added.  The new element may contai
 
 If an array element is added or deleted, the other elements need to be resequenced by calling the C<resequence()> method on the container, which in turn calls C<update()> on all of the child nodes to replace the index value.
 
-When an element is deleted, PL2SQL will attempt to delete the affected node records from the RDB by identifying all the descendents in a container node using C<<NoSQL::PL2SQL::Perldata->descendants()>>; and all the linked nodes of a large scalar using the C<linklist()> method.  A reference count map is used so that referenced elements aren't destroyed.  C<refcount()> decrements the count and returns the result.
+When an element is deleted, PL2SQL will attempt to delete the affected node records from the RDB by identifying all the descendents in a container node using C<< NoSQL::PL2SQL::Perldata->descendants() >>; and all the linked nodes of a large scalar using the C<linklist()> method.  A reference count map is used so that referenced elements aren't destroyed.  C<refcount()> decrements the count and returns the result.
 
 The referencecount map isn't accurate until all the nodes have been loaded.  So CLEAR calls C<sqlcount()>, which returns an untied copy of the element represented by the node $tied, and recursively loads all the descendant nodes.  In order to load all nodes, C<sqlclone()> must be called on the top node, using the C<topnode()> method.  Otherwise, C<topnode> can fetch any node using a $recno argument.
 
@@ -846,11 +854,18 @@ Changes to the original object are never written to the RDB until the object is 
   my @nvp = $tied->scalarok() ;
 
 The DESTROY sequence is as follows:
-1. Records belonging to deleted child nodes are deleted.
-2. The node is converted to a NoSQL::PL2SQL::Node object via the C<updates()> method.  If the node's data is an untied object, or large scalar, the conversion may result in a set of Node objects.
-3. C<<NoSQL::PL2SQL::Node::combine()>> and C<<NoSQL::PL2SQL::Node::insertall()>> methods are called on the node set.
 
-When an object is created, C<<NoSQL::PL2SQL::Node::insertall()>> keeps track of, and sets link values internally.  When an object is updated, DESTROY must perform this housekeeping.  The C<lastitem()> method is used, for example, to link to the last sibling in a linked list.
+=over 8
+
+=item 1. Records belonging to deleted child nodes are deleted.
+
+=item 2. The node is converted to a NoSQL::PL2SQL::Node object via the C<updates()> method.  If the node's data is an untied object, or large scalar, the conversion may result in a set of Node objects.
+
+=item 3. C<< NoSQL::PL2SQL::Node::combine() >> and C<< NoSQL::PL2SQL::Node::insertall() >> methods are called on the node set.
+
+=back
+
+When an object is created, C<< NoSQL::PL2SQL::Node::insertall() >> keeps track of, and sets link values internally.  When an object is updated, DESTROY must perform this housekeeping.  The C<lastitem()> method is used, for example, to link to the last sibling in a linked list.
 
 C<updates()> is responsible for generating Nodes that are eventually written into the RDB.  When returned Nodes have no "id" property, the SQL engine NoSQL::PL2SQL::DBI will create new records to accomodate them.  C<update()> performs two tests to minimize overhead:  C<equals()> is used to see if the Object's data has been modified; C<scalarok()> is used to see if a data node can be reused.
 
@@ -872,16 +887,26 @@ Original version; created by h2xs 1.23 with options
   -AXCO
 	NoSQL::PL2SQL
 
+=item 0.02	
+
+Cleaned perldoc formatting issues
+
 =back
 
 
 
 =head1 SEE ALSO
 
-NoSQL::PL2SQL
-NoSQL::PL2SQL::Node
+=over 8
 
-http://pl2sql.tqis.com
+=item NoSQL::PL2SQL
+
+=item NoSQL::PL2SQL::Node
+
+=item http://pl2sql.tqis.com/
+
+=back
+
 
 =head1 AUTHOR
 

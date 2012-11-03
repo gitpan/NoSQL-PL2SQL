@@ -21,7 +21,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 # Preloaded methods go here.
 
@@ -344,9 +344,9 @@ The following sequence of operation describes how NoSQL::PL2SQL::Node objects ar
 
 3. After the object has been modified, some of the tree nodes are NoSQL::PL2SQL::Object's and others are untied vanilla PL data structures.  When DESTROYed, the PL data elements are converted piecemeal into NoSQL::PL2SQL::Node's and written with the other records until the next iteration.
 
-Phase 1 operation is executed with a single call to the factory method:  First, the object is converted into a XML::Parser::Nodes tree using C<<XML::Parser::Nodes->pl2xml()>>.  Each node in this tree is converted using the C<xml2sql()> function, which calls the C<new()> constructor after recursing through the child nodes.  (Consquently, the top node is last.)
+Phase 1 operation is executed with a single call to the factory method:  First, the object is converted into a XML::Parser::Nodes tree using C<< XML::Parser::Nodes->pl2xml() >>.  Each node in this tree is converted using the C<xml2sql()> function, which calls the C<new()> constructor after recursing through the child nodes.  (Consquently, the top node is last.)
 
-The resulting set of nodes is passed through the C<combine()> function.  C<<XML::Parser::Nodes->pl2xml()>> creates an extra data node for every container node.  C<combine()> combines these two nodes and returns a smaller set, which are passed into C<insertall()>.  C<insertall()> does the hard work of converting child pointers into RDB references, as it calls the C<sql()> method of each Node.
+The resulting set of nodes is passed through the C<combine()> function.  C<< XML::Parser::Nodes->pl2xml() >> creates an extra data node for every container node.  C<combine()> combines these two nodes and returns a smaller set, which are passed into C<insertall()>.  C<insertall()> does the hard work of converting child pointers into RDB references, as it calls the C<sql()> method of each Node.
 
 During the Phase 1 operation, C<insertall()> encapsulates all the complexity required to link the nodes.  During the Phase 3 operation, C<insertall()> is run separately for each untied PL element, and needs to accomodate existing links.  The process for determining those link values is encapsulated within the NoSQL::PL2SQL::Object package instead.
 
@@ -380,18 +380,27 @@ Original version; created by h2xs 1.23 with options
   -AXCO
 	NoSQL::PL2SQL
 
+=item 0.02	
+
+Cleaned perldoc formatting issues
+
 =back
 
 
 
 =head1 SEE ALSO
 
-NoSQL::PL2SQL
-NoSQL::PL2SQL::Table
-XML::Parser::Node
-XML::Dumper
+=over 8
 
-http://pl2sql.tqis.com
+=item NoSQL::PL2SQL
+
+=item NoSQL::PL2SQL::DBI
+
+=item XML::Parser::Node
+
+=item http://pl2sql.tqis.com/
+
+=back
 
 =head1 AUTHOR
 

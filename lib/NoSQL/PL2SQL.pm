@@ -27,7 +27,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 require XSLoader;
 XSLoader::load('NoSQL::PL2SQL', $VERSION);
@@ -57,8 +57,8 @@ sub sqlobject {
 
 	return carp( "SQLObject must be called as a static method" )
 			if ref $package ;
-	return carp( 'Missing or invalid data source' ) unless ref $dsn
-			&& ( ref $dsn eq 'ARRAY' || $dsn->isa('ARRAY') ) ;
+	return carp( 'Missing or invalid data source' ) 
+			unless eval { $dsn->db } ;
 	return carp( 'Fetch requires an objectid' )
 			unless defined $objectid || defined $object ;
 	return carp( 'SQLObject requires a connected database. ' 
@@ -66,8 +66,8 @@ sub sqlobject {
 			unless $dsn->dbconnected ;
 
 	## write to database
-	$objectid = NoSQL::PL2SQL::Node->factory( 
-			  $dsn, $objectid, $object, $package )
+	$objectid = NoSQL::PL2SQL::Node->factory( $dsn, $objectid, 
+			bless( $object, $package ), $package )
 			if defined $object ;
 
 	my $perlnode = $objectid ;
@@ -187,9 +187,9 @@ NoSQL::PL2SQL is intended for class designers.  An example of a class that imple
 
 The main requirement is that the class inherit NoSQL::PL2SQL methods.  Second, a data source needs to be defined.  One of NoSQL::PL2SQL's features is a "universal" data structure that can accomodate heterogenous, complex data structures.  As a result the table that defines the data source can be shared among different classes.
 
-NoSQL::PL2SQL::DBI contains access methods used by NoSQL::PL2SQL.  In addition to the shown constructor and connector, C<<$dsn->loadschema>> is used to build the datasource table when an application is installed.
+NoSQL::PL2SQL::DBI contains access methods used by NoSQL::PL2SQL.  In addition to the shown constructor and connector, C<< $dsn->loadschema >> is used to build the datasource table when an application is installed.
 
-NoSQL::PL2SQL's interface is intended to be built into an implementing class's constructor, generally in place of the C<bless> statement.  In this example, the C<<AnyArbitraryClass->new()>> constructor can be invoked three ways.  First, with no arguments, the constructor returns an empty persistent blessed hash reference.  Second, if the single argument is a hash reference, the constructor converts the structure into a persistent blessed object.  Third, if the argument is valid, numeric ObjectID, the constructor returns the stored object that exactly matches the state when it was previously destroyed.
+NoSQL::PL2SQL's interface is intended to be built into an implementing class's constructor, generally in place of the C<bless> statement.  In this example, the C<< AnyArbitraryClass->new() >> constructor can be invoked three ways.  First, with no arguments, the constructor returns an empty persistent blessed hash reference.  Second, if the single argument is a hash reference, the constructor converts the structure into a persistent blessed object.  Third, if the argument is valid, numeric ObjectID, the constructor returns the stored object that exactly matches the state when it was previously destroyed.
 
 In this example, when a persistent object is initialized, its ObjectID is printed out.  Naturally, this is a clumsy way to maintain object references, although personally, I am not above hardcoding a reference into an HTML document.
 
@@ -258,10 +258,15 @@ None by default.
 
 =head1 SEE ALSO
 
-NoSQL::PL2SQL::DBI
-XML::Parser::Nodes
+=over 8
 
-http://pl2sql.tqis.com/
+=item XML::Parser::Nodes
+
+=item NoSQL::PL2SQL::DBI
+
+=item http://pl2sql.tqis.com/
+
+=back
 
 =head1 AUTHOR
 

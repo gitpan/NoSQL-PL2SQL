@@ -40,6 +40,12 @@ or maintain a data schema for each object.  Moreover, because the table
 stores arbitrary data, a single table data source can be used to back 
 multiple classes.
 
+The distribution now includes a sample package:
+  samples/pl2sql/comments.pl
+
+This package defines the rudimentary BBS system that powers the pl2sql 
+website:  http://pl2sql.tqis.com/
+
 INSTALLATION
 
 To install this module type the following:
