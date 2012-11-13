@@ -22,7 +22,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 # Preloaded methods go here.
 
@@ -305,10 +305,11 @@ sub lastitem {
 	}
 
 sub sqlclone {
-	my $self = shift ;
-	return $self unless ref $self ;
+	my $tied = shift ;
 
-	$self = item( $self )->[1] unless ref $self eq __PACKAGE__ ;
+	my $self = item( $tied )->[1] ;
+	return $tied unless defined $self ;
+
 	$self->data ;
 
 	if ( $self->{reftype} eq 'hashref' ) {
@@ -890,6 +891,10 @@ Original version; created by h2xs 1.23 with options
 =item 0.02	
 
 Cleaned perldoc formatting issues
+
+=item 0.03	
+
+Fixed C<sqlclone()>
 
 =back
 

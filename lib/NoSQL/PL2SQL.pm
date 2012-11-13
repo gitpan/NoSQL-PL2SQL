@@ -27,7 +27,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 
 require XSLoader;
 XSLoader::load('NoSQL::PL2SQL', $VERSION);
@@ -42,7 +42,9 @@ sub SQLObjectID {
 
 sub sqlobjectid {
 	my $self = shift ;
-	return NoSQL::PL2SQL::Object::item( $self )->[1]->record->{objectid} ;
+	my $tied = NoSQL::PL2SQL::Object::item( $self )->[1] ;
+	return $tied unless defined $tied ;
+	return $tied->record->{objectid} ;
 	}
 
 sub SQLObject {
@@ -121,11 +123,12 @@ sub SQLClone {
 	}
 
 sub sqlclone {
-	my $self = shift ;
-	$self = $self->sqlobject( @_ ) if @_ >= 2 ;
-	return $self unless ref $self ;
+	my $tied = shift ;
+	$tied = $tied->sqlobject( @_ ) if @_ >= 2 ;
 
-	return NoSQL::PL2SQL::Object::item( $self )->[1]->sqlclone ;
+	my $self = NoSQL::PL2SQL::Object::item( $tied )->[1] ;
+	return $tied unless defined $self ;
+	return $self->sqlclone ;
 	}
 
 sub SQLRollback {
@@ -134,8 +137,9 @@ sub SQLRollback {
 
 sub sqlrollback {
 	my $self = shift ;
-	my $o = NoSQL::PL2SQL::Object::item( $self )->[1] ;
-	$o->{globals}->{rollback} = 1 ;
+	my $tied = NoSQL::PL2SQL::Object::item( $self )->[1] ;
+	return $tied unless defined $tied ;
+	$tied->{globals}->{rollback} = 1 ;
 	}
 
 1;
@@ -195,9 +199,9 @@ In this example, when a persistent object is initialized, its ObjectID is printe
 
 Another option is to use a fixed object as an index to other objects.  Unfortunately, as of this writing, NoSQL::PL2SQL has no features for object locking, and this strategy would quickly foul up in a multi-user environment.  A third option is to define another data source to map the ObjectID to another key, such as a user's email address.  A fourth, more complicated example is shown below.
 
-Objects are automatically written when they are destroyed.  This feature can be disabled by calling C<SQLRollback()>.  Another solution is to create an untied cloned object, using C<SQLClone().  Modifications to the clone are destroyed along with the object.
+Objects are automatically written when they are destroyed.  This feature can be disabled by calling C<SQLRollback()>.  Another solution is to create an untied cloned object, using C<SQLClone()>.  Modifications to the clone are destroyed along with the object.
 
-Results have been erratic and unsatisfactory when object destruction is postponed until global destruction- althought experienced programmers will always scope the objects they use.  If a particularly robust solution is required, maintain a univeral list of all instantiations and explicitly destroy each one using an C<END{}> clause, as shown.
+Results have been erratic and unsatisfactory when object destruction is postponed until global destruction- although experienced programmers will always scope the objects they use.  If a particularly robust solution is required, maintain a univeral list of all instantiations and explicitly destroy each one using an C<END{}> clause, as shown.
 
 =head1 DESCRIPTION
 
@@ -207,9 +211,15 @@ I say "apparently" and "many" because I am not among them.  When I envision a ne
 
 There are fewer tools for programmers like me-  Although some of the NoSQL initiatives are starting to attract attention.  This design started with some specific objectives to meet my needs, and a few additional features added along the way.
 
-1.  Most importantly, the interface needs to be simple and unobtrusive.
-2.  The data implementation needs to be flexible and portable- intended to be rolled out on any shared server that provides MySQL.
-3.  The implementation should be relatively lightweight, fast, and minimize resources.
+=over 8
+
+=item 1.  Most importantly, the interface needs to be simple and unobtrusive.
+
+=item 2.  The data implementation needs to be flexible and portable- intended to be rolled out on any shared server that provides MySQL.
+
+=item 3.  The implementation should be relatively lightweight, fast, and minimize resources.
+
+=back
 
 The interface is intended to be a drop-in replacement for Perl's bless operator.  The SQLObject method returns a blessed object that is automatically tied to NoSQL::PL2SQL's RDB persistance.
 
@@ -245,7 +255,7 @@ The constructor is called with a single argument that is either the email addres
 
 XML::Dumper::pl2xml provides the basic mechanism for converting an arbitrary complex Perl data structure into an XML tree.  XML::Parser::Nodes treats this tree as a set of identical nodes.  Originally, NoSQL::PL2SQL::Node simply extended this module by adding a method to write itself as a RDB table record.  The name PL2SQL is a reference to this legacy.
 
-Hopefully, users will infer PL2SQL also include SQL2PL functionality, so implementing objects can move back and forth between persistent storage and active use.  The approach is to retain the node tree structure, and use Perl TIE magic to make the node containers appear as the original object members.  The SQL2PL functionality is embodied in the NoSQL::PL2SQL::Object package, which defines the TIE constructors and all overloading methods.
+Hopefully, users will infer PL2SQL also includes SQL2PL functionality, so implementing objects can move back and forth between persistent storage and active use.  The approach is to retain the node tree structure, and use Perl TIE magic to make the node containers appear as the original object members.  The SQL2PL functionality is embodied in the NoSQL::PL2SQL::Object package, which defines the TIE constructors and all overloading methods.
 
 NoSQL::PL2SQL::DBI defines a data abstraction for accessing the data sources.  The raw RDB record data is accessed using methods in the NoSQL::PL2SQL::Perldata package.  Each of the modules contains detailed information about their architecture and internal operations.
 

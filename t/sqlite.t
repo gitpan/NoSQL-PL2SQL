@@ -5,7 +5,7 @@
 
 # change 'tests => 1' to 'tests => last_test_to_print';
 
-use Test::More tests => 52 ;
+use Test::More tests => 55 ;
 
 BEGIN { 
 	use_ok('Scalar::Util') ;
@@ -25,7 +25,7 @@ use Digest::MD5 ;
 use Data::Dumper ;
 
 my $rebuild = 1 ;
-my $adjust = 0 ;
+my $adjust = 1 ;
 my @retr = () ;
 my @rowct = 0 ;
 my $assignedid = 0 ;
@@ -307,6 +307,14 @@ testchanges( sub {
 		unshift @{ $_[0]->{QBMSXML}->{MsgsRq} }, 'dee', 'di' ;
 		} ) ;
 
+@retr = testchanges( sub {}  ) ;
+my $clone = $retr[0]->sqlclone ;
+is( $clone, $clone->sqlclone ) ;
+$retr[0]->{mirage} = [ 'ocean' ] ;
+$retr[0]->{mirage}->[1] = 'mist' ;
+is( $retr[0]->sqlclone->{mirage}->[0], $retr[0]->{mirage}->[0] ) ;
+is( $retr[0]->sqlclone->{mirage}->[1], $retr[0]->{mirage}->[1] ) ;
+	
 my $iran =<<eof ;
  It is alleged that Iran is ‘four years closer to having a nuclear weapon.’ There is no solid evidence that Iran even has a nuclear weapons program, as opposed to a civilian nuclear enrichment program to produce fuel for electricity-generating plants (the US has 100 of these and generates the fuel for them). If it doesn’t have a nuclear weapons program, it can’t be closer to having a bomb. The question is being begged here, which is a logical fallacy and bad policy.
 eof

@@ -5,12 +5,17 @@ Revision history for Perl extension NoSQL::PL2SQL.
 		-An NoSQL::PL2SQL
 
 1.00  Mon Oct  8 13:01:46 2012
-	- Incremented the version for release
+	- Incremented the version for release.
 
 1.01  Sat Nov  3 12:50:08 EDT 2012
 	- Ironically, PL2SQL::SQLObject() actually failed to bless 
 	  unblessed objects.  An explicit bless() was added.
-	- Added a test to insert an undef
-	- Cleaned up documentation
+	- Added a test to insert an undef.
+	- Cleaned up documentation.
 
-          
+1.02  Tue Nov 13 13:36:42 EST 2012
+	- Fixed a few more documentation typos.
+	- Tests to make sure PL2SQL methods handle non-tied objects.
+	- Fixed PL2SQL::Object::sqlobject() to identify and return
+	  untied containers
+
