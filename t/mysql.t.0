@@ -144,7 +144,7 @@ sub testchanges {
 sub funchanges {
 warn "\n" ;
 	my $fun = shift ;
-	my $retr = TestRequest->sqlobject( $dsn => 1 ) ;
+	my $retr = TestRequest->sqlobject( $dsn => $assignedid ) ;
 
 	map { &$fun( $_ ) } ( $retr, $request ) ;
 $dsn->sqldump(1) ;

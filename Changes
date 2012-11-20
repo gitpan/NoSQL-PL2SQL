@@ -19,3 +19,10 @@ Revision history for Perl extension NoSQL::PL2SQL.
 	- Fixed PL2SQL::Object::sqlobject() to identify and return
 	  untied containers
 
+1.03  Mon Nov 19 12:09:17 EST 2012
+	- Fixed a few more documentation typos.
+	- Throws an error on duplicate ObjectID assignment
+	- Added support for SQLObject() error handlers
+	- Added SQLError() method to assign error handlers
+	- Fixed a bug in PL2SQL::Object::DESTROY() preventing
+	  items from being added to empty containers

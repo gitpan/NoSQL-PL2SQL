@@ -5,7 +5,7 @@
 
 # change 'tests => 1' to 'tests => last_test_to_print';
 
-use Test::More tests => 55 ;
+use Test::More tests => 56 ;
 
 BEGIN { 
 	use_ok('Scalar::Util') ;
@@ -142,15 +142,15 @@ sub testchanges {
 sub funchanges {
 warn "\n" ;
 	my $fun = shift ;
-	my $retr = TestRequest->sqlobject( $dsn => 1 ) ;
+	my $retr = TestRequest->sqlobject( $dsn => $assignedid ) ;
 
 	map { &$fun( $_ ) } ( $retr, $request ) ;
 $dsn->sqldump(1) ;
 	undef $retr ;
-warn join "\n", '', $dsn->sqldump ;
-	$retr = TestRequest->sqlobject( $dsn => 1 ) ;
+#warn join "\n", '', $dsn->sqldump ;
+	$retr = TestRequest->sqlobject( $dsn => $assignedid ) ;
 
-#warn join "\n", '', Dumper( $retr->sqlclone ), '', Dumper( $request ) ;
+warn join "\n", '', Dumper( $retr->sqlclone ), '', Dumper( $request ) ;
 	return ( $retr ) if wantarray ;
 	is( objectvalue( $retr->sqlclone ), objectvalue( $request ) ) ;
 	}
@@ -422,6 +422,19 @@ push @user, {
 		    ],
 	} ;
 			
+## Test of update 1.03
+$assignedid = 4 ;
+$request = bless {}, 'TestRequest' ;
+TestRequest->SQLObject( $dsn, $assignedid => $request ) ;
+
+testchanges( sub {} ) ;
+
+my $ignore =<<'eof' ;
+testchanges( sub {
+		$_->{Hello} = undef ;
+		} ) ;
+eof
+
 my $i = 0 ;
 NoSQL::PL2SQL::SQLObject( $user[$i]->{Email}, $dsn, 0 => $user[$i] ) ;
 

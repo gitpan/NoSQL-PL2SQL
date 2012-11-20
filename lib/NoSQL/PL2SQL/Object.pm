@@ -22,7 +22,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 # Preloaded methods go here.
 
@@ -79,8 +79,6 @@ sub DESTROY {
 	else {
 		my $source = $self->record ;
 		my $parent = $self->record( $self->{parent } ) ;
-		my $last = $self->{last}?
-				$self->record( $self->{last } ): undef ;
 	
 		my $r = $parent->{reftype} ;
 		my $o = $r eq 'hashref'? { $self->{key} => $self->{data} }:
@@ -96,7 +94,6 @@ sub DESTROY {
 
 		$xml[-1]{sql}{intkey} = $self->{sequence}
 				if exists $self->{sequence} ;
-		$xml[-1]{sql}{item} = $last->{item} if $last ;
 		}
 
 	my @combined = NoSQL::PL2SQL::Node::combine( @xml ) ;
@@ -128,10 +125,12 @@ sub DESTROY {
 			$self->{sqltable}, @combined ) ;
 	map { $self->{globals}->{adds}->{$_} = $refs->{$_} } keys %$refs ;
 
-	if ( $self->{last} ) {
-		$self->{sqltable}->update( $self->{last}, 
-				[ item => $ll ] ) ;
-		$self->record( $self->{last} )->{item} = $ll ;
+	if ( $self->{parent} ) {
+	 	my $last = NoSQL::PL2SQL::Perldata::lastitem( 
+				$self->{perldata}, $self->{parent} ) ;
+		$self->{sqltable}->update( $last->[1], 
+				[ $last->[0] => $ll ] ) ;
+		$self->record( $last->[1] )->{ $last->[0] } = $ll ;
 		}
 	}
 
@@ -298,12 +297,6 @@ sub refto {
 			$self->{perldata}, $self->{top} ) ;
 	}
 
-sub lastitem {
-	my $self = shift ;
-	return NoSQL::PL2SQL::Perldata::lastitem( 
-			$self->{perldata}, $self->{top} ) ;
-	}
-
 sub sqlclone {
 	my $tied = shift ;
 
@@ -446,7 +439,6 @@ sub newelement {
 
 	$self->{parent} = $clone->{top} ;
 	$self->{reftype} = 'item' ;
-	$self->{last} = $clone->lastitem ;
 	$self->{data} = setreference( shift @_ ) if @_ ;
 	$self->{update} = 1 ;
 	return $self ;
@@ -866,7 +858,7 @@ The DESTROY sequence is as follows:
 
 =back
 
-When an object is created, C<< NoSQL::PL2SQL::Node::insertall() >> keeps track of, and sets link values internally.  When an object is updated, DESTROY must perform this housekeeping.  The C<lastitem()> method is used, for example, to link to the last sibling in a linked list.
+When an object is created, C<NoSQL::PL2SQL::Node::insertall()> keeps track of, and sets link values internally.  When an object is updated, DESTROY must perform this housekeeping.  The C<PL2SQL::Node::lastitem()> method is used, for example, to identify the last node in a linked list.
 
 C<updates()> is responsible for generating Nodes that are eventually written into the RDB.  When returned Nodes have no "id" property, the SQL engine NoSQL::PL2SQL::DBI will create new records to accomodate them.  C<update()> performs two tests to minimize overhead:  C<equals()> is used to see if the Object's data has been modified; C<scalarok()> is used to see if a data node can be reused.
 
@@ -895,6 +887,10 @@ Cleaned perldoc formatting issues
 =item 0.03	
 
 Fixed C<sqlclone()>
+
+=item 0.04	
+
+Removed lastitem() method.  C<PL2SQL::Perldata::lastitem()> is now called during C<DESTROY()>
 
 =back
 

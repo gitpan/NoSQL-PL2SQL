@@ -21,7 +21,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 
 # Preloaded methods go here.
@@ -39,13 +39,14 @@ sub lastitem {
 	my $self = shift ;
 	my $key = shift ;
 	my $o = $self->{$key} ;
+	return [ refto => $key ] unless $o->{refto} ;
 
 	my $ii = $key ;
 	for ( my $i = $o->{refto} ; $i ; $i = $self->{ $i }->{item} ) {
 		$ii = $i ;
 		}
 
-	return $ii ;
+	return [ item => $ii ] ;
 	}
 
 sub descendants {
@@ -161,7 +162,7 @@ For example, when container Object nodes are loaded, C<fetchextract()> is used t
 
   $recno = lastitem( $perldata, $refto ) ;
 
-The C<lastitem()> function provides the functionality for C<NoSQL::PL2SQL::Object::lastiterm()>.  The record number of the first child is passed, and the record nuumber of the last child is returned.
+The C<lastitem()> function is used to maintain linked lists.  The record number identifying the list head is passed, and the record number of the final element is returned.
 
   @recnos = descendants( $perldata, $recno, $nosiblings = 1 ) ;
   pop @recnos ;
@@ -205,9 +206,13 @@ Original version; created by h2xs 1.23 with options
   -AXCO
 	NoSQL::PL2SQL
 
-=item 0.02	
+=item 0.02
 
 Cleaned perldoc formatting issues
+
+=item 0.03
+
+C<lastitem()> returns an nvp
 
 =back
 

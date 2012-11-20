@@ -33,7 +33,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 # Preloaded methods go here.
 
@@ -104,6 +104,10 @@ sub sqldump {
 	shift @_ ;
 	@sqllog = () if @_ ;
 	return @sqllog ;
+	}
+
+sub debug {
+	push @sqllog, $_[-1] if @_ ;
 	}
 
 sub sqlstatement {
@@ -280,7 +284,7 @@ sub AUTOLOAD {
 
 sub loadschema {
 	my $self = shift ;
-	return map { $self->do( $_ ) } $self->schema ;
+	return map { $self->do( $_ ) } $self->schema( @_ ) ;
 	}
 
 
@@ -386,6 +390,7 @@ NoSQL::PL2SQL::DBI - Base Perl RDB driver for NoSQL::PL2SQL
   ## Utilities and debugging
 
   $dsn->sqldump( $reset = 1 ) ;
+  $dsn->debug( $arbitrarystring ) ;
   print join "\n", $dsn->sqldump() ;
 
   my @fetchrows = $dsn->rows_hash('SELECT * FROM %s WHERE objectid=1') ;
@@ -520,21 +525,28 @@ None by default.
 
 =over 8
 
-=item 0.01	
+=item 0.01
 
 Original version; created by h2xs 1.23 with options
 
   -AXCO
 	NoSQL::PL2SQL
 
-=item 0.02	
+=item 0.02
 
 Cleaned perldoc formatting issues
 
 Added optional arg to C<schema()> method
 
-=back
+=item 0.03
 
+Added optional arg to C<schema()> method
+
+=item 0.04
+
+Added C<debug()> method
+
+=back
 
 
 =head1 SEE ALSO

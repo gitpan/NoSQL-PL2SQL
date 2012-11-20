@@ -27,7 +27,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 require XSLoader;
 XSLoader::load('NoSQL::PL2SQL', $VERSION);
@@ -35,6 +35,40 @@ XSLoader::load('NoSQL::PL2SQL', $VERSION);
 # Preloaded methods go here.
 
 our @members = qw( perldata sqltable globals ) ;
+my @errors = qw( 
+		BlessedCaller InvalidDataSource 
+		InvalidObjectID UnconnectedDataSource
+		DuplicateObject ObjectNotFound CorruptData ) ;
+my %errors = () ;
+
+sub SQLError {
+	return sqlerror( @_ ) ;
+	}
+
+sub sqlerror {
+	my $package = shift ;
+	my @nvp = () ;
+	push @nvp, [ splice @_, 0, 2 ] while @_ ;
+	map { $errors{ $_->[0] } = $_->[1] } @nvp ;
+	return @errors ;
+	}
+
+sub SQLCarp {
+	return sqlcarp( @_ ) ;
+	}
+
+sub sqlcarp {
+	my $package = shift ;
+	my $key = shift ;
+	my $error = shift ;
+	$error->{Error} = $key ;
+	
+	return &{ $errors{$key} }( $package, $error, @_ )
+			if exists $errors{$key} 
+			  && ref $errors{$key} eq 'CODE' ;
+	carp( $_[-1] ) ;
+	return undef ;
+	}
 
 sub SQLObjectID {
 	return sqlobjectid( @_ ) ;
@@ -53,19 +87,33 @@ sub SQLObject {
 
 sub sqlobject {
 	my $package = shift ;
+	my @args = @_ ;
 	my $dsn = shift ;
 	my $objectid = @_ && ! ref $_[0]? shift( @_ ): undef ;
 	my $object = @_ && ref $_[0]? shift( @_ ): undef ;
 
-	return carp( "SQLObject must be called as a static method" )
+	return sqlcarp( $package, $errors[0], {}, @args, 
+			'SQLObject must be called as a static method.' ) 
 			if ref $package ;
-	return carp( 'Missing or invalid data source' ) 
+	return sqlcarp( $package, $errors[1], {}, @args, 
+			'Missing or invalid data source.' ) 
 			unless eval { $dsn->db } ;
-	return carp( 'Fetch requires an objectid' )
+	return sqlcarp( $package, $errors[2], {}, @args, 
+			'Fetch requires an objectid.' ) or return undef
 			unless defined $objectid || defined $object ;
-	return carp( 'SQLObject requires a connected database. ' 
-			.'Use NoSQL::PL2SQL::Node::factory for testing.' )
+	return sqlcarp( $package, $errors[3], {}, @args, 
+			'SQLObject requires a connected database.' 
+		  	  .'Use NoSQL::PL2SQL::Node::factory for testing.' )
 			unless $dsn->dbconnected ;
+
+	if ( defined $objectid && defined $object ) {
+		my $perldata = $dsn->fetch( [ objectid => $objectid, 0 ],
+				[ objecttype => $package, 1 ] ) ;
+		return sqlcarp( $package, $errors[4], 
+				  { $errors[4] => $perldata },
+				  @args, "Duplicate object $objectid." )
+				if scalar values %$perldata ;
+		}
 
 	## write to database
 	$objectid = NoSQL::PL2SQL::Node->factory( $dsn, $objectid, 
@@ -79,9 +127,10 @@ sub sqlobject {
 	$self->{perldata} = 
 			## hardcoded arguments for now
 			$dsn->fetch( [ objectid => $objectid, 0 ],
-			[ objecttype => $package, 1 ] ) ;
-	return carp( sprintf "Object not found for object $objectid." )
-			  || 0 unless scalar values %{ $self->{perldata} } ;
+			  [ objecttype => $package, 1 ] ) ;
+	return sqlcarp( $package, $errors[5], {}, @args, 
+			"Object not found for object $objectid." )
+			unless scalar values %{ $self->{perldata} } ;
 
 	## find perldata node if necessary
 	my $pdrecord = $self->record( $objectid ) || { id => 0 } ;
@@ -89,7 +138,8 @@ sub sqlobject {
 			  grep $_->{reftype} eq 'perldata',
 			  values %{ $self->{perldata} }
 			unless $pdrecord->{id} == $objectid ;
-	return warn( 'Missing perldata node- possible data corruption.' )
+	return sqlcarp( $package, $errors[6], { $errors[6] => $self }, @args,
+			'Missing perldata node- possible data corruption.' )
 			unless $perlnode ;
 
 	$self->{top} = $self->record( $perlnode )->{refto} ;
@@ -221,13 +271,67 @@ There are fewer tools for programmers like me-  Although some of the NoSQL initi
 
 =back
 
-The interface is intended to be a drop-in replacement for Perl's bless operator.  The SQLObject method returns a blessed object that is automatically tied to NoSQL::PL2SQL's RDB persistance.
+The interface is intended to be a drop-in replacement for Perl's bless operator.  The C<SQLObject()> method returns a blessed object that is automatically tied to NoSQL::PL2SQL's RDB persistance.
+
+=head1 ERROR HANDLING
+
+If you're comfortable writing closures or anonymous subroutines, V1.03 now allows for error handlers.  An application or implementing class can now resolve problems during run-time.  Errors are only thrown for the C<SQLObject()> method- although C<SQLClone()> can be invoked as an alias for C<SQLObject()>.  C<SQLObject()> throws the following errors:
+
+=head3 BlessedCaller 
+
+C<SQLObject()> should be called as a constructor.  Its first argument must be a classname string.  Otherwise, this error is thrown.  C<SQLClone()> is intended to be called as an object method.
+
+=head3 InvalidDataSource 
+
+If the first argument does not instantiate C<NoSQL::PL2SQL::DBI>, this error is thrown.
+
+=head3 InvalidObjectID
+
+If the first argument is valid, this error is thrown if the second argument is missing.
+
+=head3 UnconnectedDataSource
+
+The data source must be connected using the C<DBI::Connect()> method or this error is thrown.
+
+=head3 DuplicateObject 
+
+If thrown with 3 valid arguments, C<SQLObject()> will try to assign the second argument as an ObjectID.  If that ObjectID has already been assigned, this error is thrown.
+
+=head3 ObjectNotFound 
+
+If the second argument is a scalar it is understood to be an ObjectID.  C<SQLObject()> will either retrieve the mapped object or throw this error.
+
+=head3 CorruptData
+
+An ObjectID assigned by C<SQLObject()> matches the record number of the node tree header.  The header record is identified where reftype == 'perldata'.  Otherwise, this error is thrown.
+
+By default, C<SQLObject()> errors carp an English text message and return undefined.  A custom error handler could translate the message, return a custom error value, or recurse with different arguments.  Since C<SQLObject()> always returns a non-scalar on success, any scalar can be used to identify an error.
+
+To assign a handler, use the following format:
+
+  ## $function is an anonymous function or closure
+  my $function = sub {
+	my $package = shift ;	## First argument to SQLObject
+	my $errorid = shift ;	## One of the error keys listed above
+	my $errorobj = shift ;	## A hash reference containing useful state
+				## data.  Usually keyed on $errorid
+	my $textmessage = pop ;	## The default English error message
+	my @args = @_ ;		## The remaining arguments passed to SQLObject
+
+	## Handler code goes here
+	} ;
+
+  my @keys = SQLError( $key => $function ) ;
+  ## $key is one of the keys listed above
+
+For convenience, C<SQLError()> returns a list of all the active error keys.
+
 
 =head1  AN EXAMPLE USING A STRING KEY
 
-As part of the design objectives, an application should be able to migrate its data to to NoSQL::PL2SQL.  Primarily, I need to specify the object ids that key each object.  (Did I mention these are hardcoded in my HTML?)  In order to specify an object id, see the example below.
+As part of the design objectives, my applications need to be able to migrate their data to NoSQL::PL2SQL.  Primarily, I need to specify the object ids that key each object.  (Did I mention these are hardcoded in my HTML?)  In order to specify an object id, see the example below.
 
-When specifying object ids, care should be taken to ensure that each id is unique.  For that reason, an application should consistently assign ids, or always use automatic assignments.  For practicality, this uniqueness constraint only applies to objects in a given class.  In other words, the key definition is a combination of the class name and object id.  Since the class name is a string, the schema can be manipulated to use string keys instead of numerics.  The MyArbitraryClass is redefined below to illustrate this approach.
+When specifying object ids, care should be taken to ensure that each id is unique.  For that reason, an application should either consistently assign ids or always use automatic assignments.  For practicality, this uniqueness constraint only applies to objects in a given class.  In other words, the key definition is a combination of the class name and object id.  Since the class name is a string, the schema can be manipulated to use string keys instead of numerics.  The MyArbitraryClass is redefined below to illustrate this approach.
 
   ## SQLObject creation using a specified object id
   # MyArbitraryClass->SQLObject( $dsn, $objectid => $dataobject ) ;
