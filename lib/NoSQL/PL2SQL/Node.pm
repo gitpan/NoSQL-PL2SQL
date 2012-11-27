@@ -21,7 +21,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 # Preloaded methods go here.
 
@@ -167,7 +167,7 @@ sub stringsplit {
 	my @buff = () ;
 	push @buff, $1 while $text =~ s/^(.{512})//s ;
 	push @buff, $text if length $text ;
-	return @buff ;
+	return @buff? @buff: ('') ;
 	}
 
 sub stringfactory {
@@ -380,9 +380,13 @@ Original version; created by h2xs 1.23 with options
   -AXCO
 	NoSQL::PL2SQL
 
-=item 0.02	
+=item 0.02
 
 Cleaned perldoc formatting issues
+
+=item 0.03	
+
+Fixed bug: C<stringsplit()> converted 0 length strings to undefined
 
 =back
 

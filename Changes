@@ -26,3 +26,18 @@ Revision history for Perl extension NoSQL::PL2SQL.
 	- Added SQLError() method to assign error handlers
 	- Fixed a bug in PL2SQL::Object::DESTROY() preventing
 	  items from being added to empty containers
+
+1.04  Sat Nov 24 16:55:47 EST 2012
+	- Fixed a bug in PL2SQL::Node::stringsplit() which converted 
+	  a 0 length string to undefined
+	- Fixed a bug in PL2SQL::Object::DESTROY() which sometimes lost 
+	  global values writing new nodes.
+	- PL2SQL::DBI methods have been revised and are more useful for
+	  data sources other than PL2SQL:
+
+	- Generalized PL2SQL::DBI::fetch() and PL2SQL::DBI::perldata()
+	  methods to handle arbitrary schemas
+	- PL2SQL::DBI::perldata() arguments are explicitly defined
+	- PL2SQL::DBI::delete() now accepts the same argument format as
+	  PL2SQL::DBI::fetch()
+	- PL2SQL::DBI::table() can be invoked as a factory

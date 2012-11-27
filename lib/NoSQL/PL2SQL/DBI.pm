@@ -33,7 +33,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 # Preloaded methods go here.
 
@@ -148,7 +148,10 @@ sub rows_array {
 
 sub perldata {
 	my $self = shift ;
-	my %r = map { $_->{id} => $_ } $self->rows_hash( @_ ) ;
+	my $sql = shift ;
+	my @out = $self->rows_hash( $sql ) ;
+	return @out if @out && ! exists $out[0]{id} ;
+	my %r = map { $_->{id} => $_ } @out ;
 	return \%r ;
 #	return bless \%r, 'NoSQL::PL2SQL::Perldata' ; ## see perlmonks #989671
 	}
@@ -167,12 +170,17 @@ sub connect {
 
 sub table {
 	my $self = shift ;
-	return $self->[1] ;
+	return $self->[1] unless @_ ;
+
+	my $package = ref $self ;
+	my $out = $package->new( @_ ) ;
+	$out->[0] = $self ;
+	return $out ;
 	}
 
 sub db {
 	my $self = shift ;
-	return $self->[0] ;
+	return ref $self->[0] eq ref $self? $self->[0]->db: $self->[0] ;
 	}
 
 sub dbconnected {
@@ -183,11 +191,11 @@ sub dbconnected {
 	}
 
 ## Implementation Specific
+## optionally pass a scalar integer- otherwise same arguments as fetch()
 sub delete {
 	my $self = shift ;
-	my $id = shift ;
-
-	return $self->do( sprintf 'DELETE FROM %s WHERE id=%d', '%s', $id ) ;
+	my @delete = ref $_[0]? @_: ( [ id => $_[0] ] ) ;
+	return $self->fetch( 'DELETE FROM %s WHERE', @delete ) ;
 	}
 
 ## Implementation Specific
@@ -242,6 +250,7 @@ sub insert {
 ## Implementation Specific.  Default method is MySQL syntax.
 sub fetch {
 	my $self = shift ;
+	my $delete = ( @_ && ! ref $_[0] )? shift( @_ ): undef ;
 
 	my @pairsf = ( '%s=%s', '%s="%s"', '%s=NULL' ) ;
 	my $nvp = join ' AND ', map {
@@ -250,8 +259,8 @@ sub fetch {
 			$_->[0], $self->stringencode( $_->[1], ! $_->[2] )
 			} @_ ;
 
-	my $sql = "SELECT * FROM %s WHERE $nvp" ;
-	return $self->dbconnected?
+	my $sql = join ' ', $delete || 'SELECT * FROM %s WHERE', $nvp ;
+	return $self->dbconnected && ! defined $delete?
 			$self->perldata( $sql ):
 			$self->do( $sql ) ;
 	}
@@ -382,6 +391,7 @@ NoSQL::PL2SQL::DBI - Base Perl RDB driver for NoSQL::PL2SQL
   my %results = $dsn->insert( @nvp ) ;
   my %results = $dsn->update( $recordid, @nvp ) ;
   $dsn->delete( $recordid ) ;
+  $dsn->delete( @nvp ) ;
 
   my $encoded = $dsn->encodestring( $text ) ;
   my $recno = $dsn->lastinsert ;
@@ -420,7 +430,7 @@ Additionally, NoSQL::PL2SQL::DBI provides versions of C<< DBI->fetchrow_arrayref
 
 C<perldata()> is nearly the same as C<rows_hash()>, except the output is a hash reference that keys each record on its recordid.  Originally, the hashref was blessed as a NoSQL::PL2SQL::Perldata object, hence the name.  All NoSQL::PL2SQL data structures are implemented as a tree of nodes.  And the static methods in NoSQL::PL2SQL::Perldata are used to access the RDB records as though they were tree nodes.  
 
-All RDB inquiries made by NoSQL::PL2SQL expect a hashref structure similar to C<perldata()>'s.  As of v1.0, only the C<fetch()> method is used.  Additionally, NoSQL::PL2SQL passes its requests as a list of NVP's (name value pairs).  The nvp arguments are arrayrefs consisting of a string name, a scalar value, and a boolean that identifies the value as a string.  The boolean argument controls the SQL construction and triggers encoding, via C<stringencode()>.  C<delete()>, which takes a recordid as an argument, is the only exception.
+All RDB inquiries made by NoSQL::PL2SQL expect a hashref structure similar to C<perldata()>'s.  As of v1.0, only the C<fetch()> method is used.  Additionally, NoSQL::PL2SQL passes its requests as a list of NVP's (name value pairs).  The nvp arguments are arrayrefs consisting of a string name, a scalar value, and a boolean that identifies the value as a string.  The boolean argument controls the SQL construction and triggers encoding, via C<stringencode()>.  C<delete()>, however, optionally takes a recordid as a single argument.
 
 The C<insert()> method is trivial.  Implementations only need to override the C<update()> method.  C<insert()> needs to return a recordid value, which is determined by the underlying RDB application.  Both C<insert()> and C<update()> return NVP's as a hash reference containing an element named "id".  The other element, "sqlresults", contains the only useful output when the connected database is the default "NoSQL::PL2SQL::DBI::Null".
 
@@ -545,6 +555,16 @@ Added optional arg to C<schema()> method
 =item 0.04
 
 Added C<debug()> method
+
+=item 0.05
+
+Generalized C<fetch()> and C<perldata()> methods to handle arbitrary schemas
+
+C<perldata()> arguments are explicitly defined
+
+C<delete()> now accepts the same arguments as C<fetch()>
+
+With an argument C<table()> creates a second DSN instance chained via C<db()>.
 
 =back
 

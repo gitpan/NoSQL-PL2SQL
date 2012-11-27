@@ -22,7 +22,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 # Preloaded methods go here.
 
@@ -77,17 +77,15 @@ sub DESTROY {
 			}
 		}
 	else {
-		my $source = $self->record ;
 		my $parent = $self->record( $self->{parent } ) ;
-	
 		my $r = $parent->{reftype} ;
 		my $o = $r eq 'hashref'? { $self->{key} => $self->{data} }:
 				$r eq 'arrayref'? [ $self->{data} ]:
 				$r eq 'scalarref'? \$self->{data}:
 				return warn ;
 		@xml = NoSQL::PL2SQL::Node->factory( 0,
-				$source->{objectid}, $o, 
-				$source->{objecttype} ) ;
+				$parent->{objectid}, $o, 
+				$parent->{objecttype} ) ;
 		pop @xml ;	## perldata
 		pop @xml unless grep $_ eq $self->{reftype},
 				qw( arrayref hashref ) ;
@@ -891,6 +889,10 @@ Fixed C<sqlclone()>
 =item 0.04	
 
 Removed lastitem() method.  C<PL2SQL::Perldata::lastitem()> is now called during C<DESTROY()>
+
+=item 0.05	
+
+Fixed: C<DESTROY()> method sometimes loses global values to build sql properties of new nodes.
 
 =back
 
