@@ -41,3 +41,29 @@ Revision history for Perl extension NoSQL::PL2SQL.
 	- PL2SQL::DBI::delete() now accepts the same argument format as
 	  PL2SQL::DBI::fetch()
 	- PL2SQL::DBI::table() can be invoked as a factory
+
+1.10  Tue Nov 27 13:54:59 EST 2012
+	- cksums.txt was incomplete
+	- Incremented minor version to reflect new functionality in PL2SQL::DBI
+
+	lib/NoSQL/PL2SQL/DBI.pm
+	  - Schema changed: CREATE INDEX
+	  - indexschema() method added
+	  - sqlstatement() sprintf changed to allow multiple terms
+	  - table() can now be overloaded as a factory constructor
+	    in order to share a db handle among several dsn's
+	  - Methods db(), connect(), and dbconnect() now reflect this change
+	  - Method sqlupdate() added:  Allows an SQL UPDATE statement to
+	    be generated using the same conditional arguments as fetch().
+	  - update() return value now contains {nvp} property that is
+	    passed to the sqlupdate() method.
+	  - perldata() returns array of hashes of rows_hash() unless
+	    exists {id} property
+
+	lib/NoSQL/PL2SQL/Object.pm
+	  - The test that determines the perldata header record was
+	    rewritten as it sometimes found the wrong record.
+
+	- lib/NoSQL/DBI/SQLite.pm was updated to reflect the changes
+	  in lib/NoSQL/DBI.pm
+

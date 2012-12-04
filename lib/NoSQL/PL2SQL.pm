@@ -27,7 +27,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '1.04';
+our $VERSION = '1.10';
 
 require XSLoader;
 XSLoader::load('NoSQL::PL2SQL', $VERSION);
@@ -137,7 +137,10 @@ sub sqlobject {
 	( $perlnode ) = map { $_->{id} } 
 			  grep $_->{reftype} eq 'perldata',
 			  values %{ $self->{perldata} }
-			unless $pdrecord->{id} == $objectid ;
+			unless exists $self->{perldata}->{$objectid}
+			  && $self->{perldata}->{$objectid}->{reftype}
+			  eq 'perldata' ;
+			  
 	return sqlcarp( $package, $errors[6], { $errors[6] => $self }, @args,
 			'Missing perldata node- possible data corruption.' )
 			unless $perlnode ;

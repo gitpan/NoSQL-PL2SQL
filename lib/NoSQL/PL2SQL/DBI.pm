@@ -33,7 +33,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.05';
+our $VERSION = '0.10';
 
 # Preloaded methods go here.
 
@@ -80,10 +80,37 @@ my $xmlschema =<<'endschema' ;
     </table>
   </sql>
   <sql>
-    <index name="reference" command="CREATE" table="%s">
+    <index name="%s_reference" command="CREATE" table="%s">
       <column name="objectid" />
       <column name="objecttype" />
       <column name="reftype" />
+    </index>
+  </sql>
+</mysql>
+endschema
+
+my $indexschema =<<'endschema' ;
+<mysql>
+  <sql>
+    <table command="CREATE" table="%s">
+      <column name="textkey" type="INT" />
+      <column name="intkey" type="INT" />
+      <column name="datekey" type="INT" />
+      <column name="textvalue" type="VARCHAR" length="128" />
+      <column name="intvalue" type="INT" />
+      <column name="datevalue" type="DATE" />
+      <column name="objectid" type="INT" />
+    </table>
+  </sql>
+  <sql>
+    <index name="%s_all" command="CREATE" table="%s">
+      <column name="textkey" />
+      <column name="intkey" />
+      <column name="datekey" />
+      <column name="textvalue" />
+      <column name="intvalue" />
+      <column name="datevalue" />
+      <column name="objectid" />
     </index>
   </sql>
 </mysql>
@@ -100,6 +127,16 @@ sub schema {
 	return $nodes->schema ;
 	}
 
+## indexschema is used by NoSQL::PL2SQL::Simple.  No one has expressed
+## an intention of another DBI implementation.  Since I can get away with 
+## it, I'm arbitrarily extending this definition, and I really shouldn't.
+## In the future apps, will have to create their own database specific 
+## subclasses:  NoSQL::PL2SQL::Simple::MySQL, etc.
+
+sub indexschema {
+	return $indexschema ;
+	}
+
 sub sqldump {
 	shift @_ ;
 	@sqllog = () if @_ ;
@@ -113,7 +150,10 @@ sub debug {
 sub sqlstatement {
 	my $self = shift ;
 	my $sprintf = shift ;
-	return sprintf $sprintf, $self->[1] ;
+
+	my $ct = 0 ;
+	$ct++ while $sprintf =~ /%s/g ;
+	return sprintf $sprintf, ( $self->[1] ) x$ct ;
 	}
 
 sub do  {
@@ -164,7 +204,10 @@ sub new {
 
 sub connect {
 	my $self = shift ;
-	$self->[0] = DBI->connect( @_ ) ;
+	my $ref = $self ;
+	$ref = $ref->[0] while ref $ref eq ref $self
+				&& ref $ref->[0] eq ref $self ;
+	$ref->[0] = DBI->connect( @_ ) ;
 	return $self ;
 	}
 
@@ -207,6 +250,23 @@ sub lastinsertid {
 			  undef, undef, $self->table, 'id' ) ;
 	}
 
+###############################################################################
+##
+##  A special case of update() to handle two sets of NVP's; e.g
+##    where @values = ( [ objectid => $newid ] )
+##    and @conditions = ( [ objectid => $oldid ] )
+##  $nvp = NoSQL::PL2SQL::DBI->new('')->update( undef => @values )->{nvp} ;
+##  $dsn->sqlupdate( $nvp, @conditions ) ;
+##
+###############################################################################
+
+sub sqlupdate {
+	my $self = shift ;
+	my $nvp = shift ;
+	my $sql = sprintf 'UPDATE %s SET %s WHERE', '%s', $nvp ;
+	return $self->fetch( $sql, @_ ) ;
+	}
+
 ## update() method is used for SQL "INSERT" and "UPDATE" constructions.
 ## Implementation Specific.  Default method is MySQL syntax.
 sub update {
@@ -239,7 +299,9 @@ sub update {
 			"$insert ($keys) VALUES ($values)" ;
 	my $sqlresults = $self->db->do( $sql ) ;	## do not combine
 	return { id => $id || $self->lastinsertid,
-			sqlresults => $sqlresults } ;
+			sqlresults => $sqlresults,
+			nvp => $nvp
+			} ;
 	}
 
 sub insert {
@@ -442,13 +504,42 @@ The following methods are implemented, by default, to use an SQL syntax compatib
 
 =item C<update()>
 
+=item C<sqlupdate()>
+
 =item C<delete()>
 
 =item C<lastinsertid()>
 
+=item C<indexschema()>
+
 =item C<stringencode()>
 
 =back
+
+=head1 GENERAL USE
+
+As of version 0.10, features have been added to make the DBI more useful for schemas other than the default.  For example, delete now takes conditional arguments similar to C<fetch()>:
+
+  $dsn->delete( [ textkey => 20 ] ) ;
+
+A more complicated example involves an update request, which requires two sets of nvp's:  The first defines the values and the second defines a conditional.  Since C<update()> is a variation of C<insert()> and accepts no conditional arguments, use C<sqlupdate()> instead:
+
+  my @values = ( [ refto => 20 ] ) ;
+  my @conditions = ( [ objectid => 1 ] ) ;
+
+  my $dsn = NoSQL::PL2SQL::DBI->new('mytable') ;	## unconnected
+  print $dsn->fetch( @conditions ) ;		## pass conditional nvp's
+  print $dsn->insert( @values )->{sqlresults} ;	## pass value nvp's
+
+  ## Generate the values clause as a separate string
+  my $nvp = NoSQL::PL2SQL::DBI->new('')->insert( @values )->{nvp} ;
+
+  ## Pass that values clause into the sqlupdate() method
+  print $dsn->sqlupdate( $nvp, @conditions ) ;
+
+  ## Prints: UPDATE mytable SET refto=20 WHERE objectid=1
+
+Implementations of PL2SQL::DBI handle slight variations of SQL.  And the translation instructions are distributed among various methods somewhat arbitrarily:  The command syntax is defined in sqlupdate(); the values clause syntax is defined in update(); and the conditional clause is defined in fetch().
 
 =head1 SCHEMA
 
@@ -501,7 +592,7 @@ This definition, however, is only required for explict SQL output.  Otherwise, t
 	## return column definition
 	}
 
-The XML node shown above, named table, is processed by C<< Schema->schema() >>, and its explicitly defined C<< Schema::table->schema() >> method is called.  That method punts to another method, defined by the "command" attribute of the node, and the << Schema::table->CREATE() >> method is called in turn.  That method gets its child schemas by calling the default << Schema->schema() >> method.  At this point, the package names of the child schemas start accumulating, and each of those C<schema()> methods return substrings that are combined into a single SQL directive.
+The XML node shown above, named table, is processed by C<< Schema->schema() >>, and its explicitly defined C<< Schema::table->schema() >> method is called.  That method punts to another method, defined by the "command" attribute of the node, and the C<< Schema::table->CREATE() >> method is called in turn.  That method gets its child schemas by calling the default C<< Schema->schema() >> method.  At this point, the package names of the child schemas start accumulating, and each of those C<schema()> methods return substrings that are combined into a single SQL directive.
 
 To summarize, a schema definition requires the definition of a number of package classes.  The package names correlate to the structure of the node tree (see XML::Parser::Nodes::tree()).  Each package class needs to extend C<NoSQL::PL2SQL::DBI::Schema>, and may or may not override the C<schema()> method.  Output can be varied by defining methods that correspond to the "command" attribute.
 
@@ -565,6 +656,18 @@ C<perldata()> arguments are explicitly defined
 C<delete()> now accepts the same arguments as C<fetch()>
 
 With an argument C<table()> creates a second DSN instance chained via C<db()>.
+
+=item 0.10
+
+Added C<sqlupdate()>.
+
+Added nvp element to C<update()>'s return value.
+
+Fixed a bug in the $xmlschema "CREATE INDEX" node
+
+Modified C<sqlstatement()>
+
+Added C<indexschema()> for NoSQL::PL2SQL:Simple
 
 =back
 

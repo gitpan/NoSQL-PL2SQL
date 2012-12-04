@@ -38,7 +38,7 @@ my $xmlschema =<<'endschema' ;
     </table>
   </sql>
   <sql>
-    <index name="reference" command="CREATE" table="%s">
+    <index name="%s_reference" command="CREATE" table="%s">
       <column name="objectid" />
       <column name="objecttype" />
       <column name="reftype" />
@@ -47,9 +47,41 @@ my $xmlschema =<<'endschema' ;
 </mysql>
 endschema
 
+my $indexschema =<<'endschema' ;
+<mysql>
+  <sql>
+    <table command="CREATE" table="%s">
+      <column name="textkey" type="INTEGER" />
+      <column name="intkey" type="INTEGER" />
+      <column name="datekey" type="INTEGER" />
+      <column name="textvalue" type="TEXT" length="128" />
+      <column name="intvalue" type="INTEGER" />
+      <column name="datevalue" type="TEXT" />
+      <column name="objectid" type="INTEGER" />
+    </table>
+  </sql>
+  <sql>
+    <index name="%s_all" command="CREATE" table="%s">
+      <column name="textkey" />
+      <column name="intkey" />
+      <column name="datekey" />
+      <column name="textvalue" />
+      <column name="intvalue" />
+      <column name="datevalue" />
+      <column name="objectid" />
+    </index>
+  </sql>
+</mysql>
+endschema
+
 sub schema {
 	my $self = shift ;
-	return NoSQL::PL2SQL::DBI::schema( $self, $xmlschema ) ;
+	my $schema = @_? shift( @_ ): $xmlschema ;
+	return NoSQL::PL2SQL::DBI::schema( $self, $schema ) ;
+	}
+
+sub indexschema {
+	return $indexschema ;
 	}
 
 sub stringencode {
