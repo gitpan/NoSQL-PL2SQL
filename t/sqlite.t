@@ -25,7 +25,7 @@ use Digest::MD5 ;
 use Data::Dumper ;
 
 my $rebuild = 1 ;
-my $adjust = 1 ;
+my $adjust = 3 ;
 my @retr = () ;
 my @rowct = 0 ;
 my $assignedid = 0 ;
@@ -118,16 +118,18 @@ do {
 	$dsn->loadschema ;
 	
 	@rowct = $dsn->rows_array('SELECT COUNT(*) FROM %s') ;
-	is( 0, $rowct[0][0] ) ;
+	is( 0, $rowct[0][0], 'table deleted' ) ;
 	
 	my $o = TestRequest->SQLObject( $dsn, $request ) ;
-	is( ref $o, ref $request ) ;
+	is( ref $o, ref $request, 'test empty object' ) ;
 	
 	$assignedid = $o->SQLObjectID ;
 	ok( defined $assignedid ) ;
 	} if $rebuild ;
 
 sub testchanges {
+	die join ' ', caller unless @_ == 2 ;
+	my $name = shift ;
 	my $fun = shift ;
 	my $retr = TestRequest->sqlobject( $dsn => $assignedid ) ;
 	map { &$fun( $_ ) } ( $retr, $request ) ;
@@ -135,7 +137,10 @@ sub testchanges {
 
 	$retr = TestRequest->sqlobject( $dsn => $assignedid ) ;
 	return ( $retr ) if wantarray ;
-	is( objectvalue( $retr->sqlclone ), objectvalue( $request ) ) ;
+
+	my $ct = ( caller )[-1] ;
+	is( objectvalue( $retr->sqlclone ), objectvalue( $request ), 
+			"$ct $name" ) ;
 	}
 
 ## Used for debugging
@@ -155,45 +160,45 @@ warn join "\n", '', Dumper( $retr->sqlclone ), '', Dumper( $request ) ;
 	is( objectvalue( $retr->sqlclone ), objectvalue( $request ) ) ;
 	}
 
-testchanges( sub {} ) ;
+testchanges( 'initial load', sub {} ) ;
 
 
 # splice a hashref
-testchanges( sub { 
+testchanges( 'splice a hashref element', sub { 
 		splice @{ $_[0]->{QBMSXML}->{MsgsRq} }, 1, 0, 
 		  bless( { hello => 'world' }, 'gymbag' ) ;
 		} ) ;
 
 # change hashref to hashref
-testchanges( sub {
+testchanges( 'replace a hashref', sub {
 		$_[0]->{QBMSXML}->{MsgsRq}->[1] = 
 		  bless( {'a'..'n'}, 'gymbag' ) ;
 		} ) ;
 
 # change hashref to arrayref
-testchanges( sub {
+testchanges( 'hashref to arrayref', sub {
 		$_[0]->{QBMSXML}->{MsgsRq}->[1] = 
 		  bless( [ 'hello', 'world' ], 'gymbag' ) ;
 		} ) ;
 
 # change hashref to string
-testchanges( sub {
+testchanges( 'hashref to string', sub {
 		$_[0]->{QBMSXML}->{MsgsRq}->[1] = 'fantasy' ;
 		} ) ;
 
 # change hashref to integer
-testchanges( sub {
+testchanges( 'hashref to integer', sub {
 		$_[0]->{QBMSXML}->{MsgsRq}->[0] = 20 ;
 		} ) ;
  
-# push-pop-push
-testchanges( sub {
+# push-pop
+testchanges( 'push-pop', sub {
 		push @{ $_[0]->{QBMSXML}->{MsgsRq} }, [ 'a'..'e' ] ;
 		my $oo = pop @{ $_[0]->{QBMSXML}->{MsgsRq} } ;
 		} ) ;
 
-# push-pop-push
-testchanges( sub {
+# push-pop-push-unshift 
+testchanges( 'push-pop-push-unshift', sub {
 		push @{ $_[0]->{QBMSXML}->{MsgsRq} }, [ 1..5 ] ;
 		my $oo = pop @{ $_[0]->{QBMSXML}->{MsgsRq} } ;
 		push @{ $_[0]->{QBMSXML}->{MsgsRq} }, "mister mystery" ;
@@ -201,16 +206,16 @@ testchanges( sub {
 		} ) ;
 
 # undef
-testchanges( sub {
+testchanges( 'undef element', sub {
 		$_[0]->{QBMSXML}->{Null} = undef ;
 		} ) ;
 
 # large scalar
 $alpha = join '', ('a'..'z') ;
-testchanges( sub {
+testchanges( 'large scalar', sub {
 		$_[0]->{QBMSXML}->{Singon} = $alpha x100 ;
 		} ) ;
-is ( length $request->{QBMSXML}->{Singon}, 2600 ) ;
+is ( length $request->{QBMSXML}->{Singon}, 2600, "large scalar baseline" ) ;
 
 # larger scalar
 local( *H ) ;
@@ -222,25 +227,25 @@ do {
 	$buff = <$fh> ;
 	} ;
 
-testchanges( sub {
+testchanges( 'larger scalar', sub {
 		$_[0]->{QBMSXML}->{Singon} = $buff ;
 		} ) ;
-is ( $request->{QBMSXML}->{Singon}, $buff ) ;
+is ( $request->{QBMSXML}->{Singon}, $buff, 'larger scalar baseline' ) ;
 
 # smaller scalar
-testchanges( sub {
+testchanges( 'large scalar to small scalar', sub {
 		$_[0]->{QBMSXML}->{Singon} = 'Jim Schueler' ;
 		} ) ;
 
 # add another hash
-testchanges( sub {
+testchanges( 'yet another hashref element', sub {
 		delete $_[0]->{QBMSXML}->{Singon} ;
 		$_[0]->{QBMSXML}->{Singon} =
 		  bless( { hello => 'world' }, 'gymbag' ) ;
 		} ) ;
 
 # add existing internal reference
-@retr = testchanges( sub {
+@retr = testchanges( 'add internal reference', sub {
 		$_[0]->{QBMSXML}->{Singup} = 
 		  bless( { hello => 'tokyo' }, 'gymshoes' ) ;
 		$_[0]->{QBMSXML}->{Singup} = $_[0]->{QBMSXML}->{Singon} ;
@@ -252,12 +257,12 @@ is( $retr[0]->{QBMSXML}->{Singon}->{hello}, 'welt' ) ;
 @retr = () ;
 
 # delete internal reference
-testchanges( sub {
+testchanges( 'delete internal reference', sub {
 		delete $_[0]->{QBMSXML}->{Singon} ;
 		} ) ;
 
 # add new internal reference
-@retr = testchanges( sub {
+@retr = testchanges( undef, sub {
 		$_[0]->{QBMSXML}->{SingSong}->[0] = 
 				[ qw( do re mi ) ] ;
 		push @{ $_[0]->{QBMSXML}->{SingSong} },
@@ -267,53 +272,59 @@ testchanges( sub {
 
 push @{ $request->{QBMSXML}->{SingSong}->[0] }, 'fa' ;
 push @{ $retr[0]->{QBMSXML}->{SingSong}->[0] }, 'fa' ;
-is( $retr[0]->{QBMSXML}->{SingSong}->[-1]->[-1], 'fa' ) ;
+is( $retr[0]->{QBMSXML}->{SingSong}->[-1]->[-1], 'fa', 
+		'internal reference baseline' ) ;
 
-@retr = testchanges ( sub {
+@retr = testchanges ( 'internal reference to new element', sub {
 		shift @{ $_[0]->{QBMSXML}->{SingSong} } ;
 		} ) ;
 
 @rowct = $dsn->rows_array('SELECT COUNT(*) FROM %s') ;
-is( $rowct[0][0], 56 +$adjust ) ;
+is( $rowct[0][0], 56 +$adjust, 'internal record count' ) ;
 
-testchanges( sub {
+testchanges( 'delete orphaned records', sub {
 		$_[0]->{QBMSXML}->{MsgsRq} = [ qw( fee fi fo fum ) ] ;
 		} ) ;
 
 @rowct = $dsn->rows_array('SELECT COUNT(*) FROM %s') ;
-is( $rowct[0][0], 43 +$adjust ) ;	## should be smaller than 57
+is( $rowct[0][0], 43 +$adjust, 'confirm deleted records' ) ;
 
-@retr = testchanges( sub {
+@retr = testchanges( 'delete internal reference', sub {
 		$_[0]->{QBMSXML}->{Singon} = $_[0]->{QBMSXML}->{Singup} ;
 		delete $_[0]->{QBMSXML}->{Singup} ;
 		$_[0]->{QBMSXML}->{Singup} = \"magic!" ;
 		$_[0]->{QBMSXML}->{Singon} = $_[0]->{QBMSXML}->{Singup} ;
 		} ) ;
 
-is( ${ $retr[0]->{QBMSXML}->{Singup} }, ${ $retr[0]->{QBMSXML}->{Singon} } ) ;
+is( ${ $retr[0]->{QBMSXML}->{Singup} }, 
+		${ $retr[0]->{QBMSXML}->{Singon} }, 
+		'reference value preserved' ) ;
 
 my $longstring = $alpha x30 ;
 $request->{QBMSXML}->{Singon} = \$longstring ;
 ${ $retr[0]->{QBMSXML}->{Singup} } = $longstring ;
-is( ${ $retr[0]->{QBMSXML}->{Singon} }, ${ $request->{QBMSXML}->{Singon} } ) ;
+is( ${ $retr[0]->{QBMSXML}->{Singon} }, ${ $request->{QBMSXML}->{Singon} },
+		'reference to large scalar' ) ;
 @retr = () ;
 
-testchanges( sub {
+testchanges( 'clean up references', sub {
 		delete $_[0]->{QBMSXML}->{Singup} ;
 		} ) ;
 
-testchanges( sub {
+testchanges( 'manipulate an array ref', sub {
 		$_[0]->{QBMSXML}->{MsgsRq}->[2] = 'do' ;
 		unshift @{ $_[0]->{QBMSXML}->{MsgsRq} }, 'dee', 'di' ;
 		} ) ;
 
-@retr = testchanges( sub {}  ) ;
+@retr = testchanges( undef, sub {} ) ;
 my $clone = $retr[0]->sqlclone ;
-is( $clone, $clone->sqlclone ) ;
+is( $clone, $clone->sqlclone, 'test clone invocations' ) ;
 $retr[0]->{mirage} = [ 'ocean' ] ;
 $retr[0]->{mirage}->[1] = 'mist' ;
-is( $retr[0]->sqlclone->{mirage}->[0], $retr[0]->{mirage}->[0] ) ;
-is( $retr[0]->sqlclone->{mirage}->[1], $retr[0]->{mirage}->[1] ) ;
+is( $retr[0]->sqlclone->{mirage}->[0], $retr[0]->{mirage}->[0],
+		'clone new element' ) ;
+is( $retr[0]->sqlclone->{mirage}->[1], $retr[0]->{mirage}->[1],
+		'add new element to new element and clone' ) ;
 	
 my $iran =<<eof ;
  It is alleged that Iran is ‘four years closer to having a nuclear weapon.’ There is no solid evidence that Iran even has a nuclear weapons program, as opposed to a civilian nuclear enrichment program to produce fuel for electricity-generating plants (the US has 100 of these and generates the fuel for them). If it doesn’t have a nuclear weapons program, it can’t be closer to having a bomb. The question is being begged here, which is a logical fallacy and bad policy.
@@ -345,16 +356,16 @@ $request = bless [
             ], 'TestRequest' ;
 
 TestRequest->SQLObject( $dsn, $assignedid => $request ) ;
-testchanges( sub {} ) ;
+testchanges( 'create array object', sub {} ) ;
 
 $assignedid = 3 ;
 my $string = 'NoSQL::PL2SQL' ;
 $request = bless \$string, 'TestRequest' ;
 TestRequest->SQLObject( $dsn, $assignedid => $request ) ;
 
-testchanges( sub {} ) ;
+testchanges( 'create scalar object', sub {} ) ;
 
-testchanges( sub {
+testchanges( 'change scalar object', sub {
 	${ $_[0] } = 'turquoise' ;
 	} ) ;
 
@@ -427,10 +438,10 @@ $assignedid = 4 ;
 $request = bless {}, 'TestRequest' ;
 TestRequest->SQLObject( $dsn, $assignedid => $request ) ;
 
-testchanges( sub {} ) ;
+testchanges( 'test empty container', sub {} ) ;
 
 my $ignore =<<'eof' ;
-testchanges( sub {
+testchanges( 'confirm empty container', sub {
 		$_->{Hello} = undef ;
 		} ) ;
 eof
@@ -451,8 +462,8 @@ sub stringtest {
 			objectvalue( $user[$i] ) ) ;
 	}
 
-stringtest( 0 ) ;
-stringtest( 1 ) ;
-stringtest( 2 ) ;
+stringtest( 'key on string', 0 ) ;
+stringtest( 'another key on string', 1 ) ;
+stringtest( 'yaks', 2 ) ;
 
 1

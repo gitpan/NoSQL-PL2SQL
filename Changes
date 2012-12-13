@@ -67,3 +67,7 @@ Revision history for Perl extension NoSQL::PL2SQL.
 	- lib/NoSQL/DBI/SQLite.pm was updated to reflect the changes
 	  in lib/NoSQL/DBI.pm
 
+1.11  Thu Dec 13 10:02:28 EST 2012
+	- Overloaded DESTROY method now fails gracefully
+	- Added method descriptors to sqlite.t so I can interprete
+	  the CPAN test reports

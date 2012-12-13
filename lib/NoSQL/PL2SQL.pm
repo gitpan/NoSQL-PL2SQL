@@ -27,7 +27,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 require XSLoader;
 XSLoader::load('NoSQL::PL2SQL', $VERSION);
@@ -228,7 +228,7 @@ NoSQL::PL2SQL is intended for class designers.  An example of a class that imple
 
   sub error {
 	my $self = shift ;
-	$self->SQLRollBack ;
+	$self->SQLRollback ;
 	warn "unrecoverable error" ;
 	}
 

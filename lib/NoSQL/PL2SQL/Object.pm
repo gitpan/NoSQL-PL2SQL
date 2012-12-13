@@ -22,7 +22,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 # Preloaded methods go here.
 
@@ -645,6 +645,7 @@ sub DELETE {
 
 	my $rv = $self->data( $k ) ;
 	my $o = $self->data( $k, 1 ) ;
+	return undef unless $o ;
 
 	$o->CLEAR unless $o->{reftype} eq 'item' ;
 	$o->update( deleted => 1 ) if $obliterate ;
@@ -893,6 +894,10 @@ Removed lastitem() method.  C<PL2SQL::Perldata::lastitem()> is now called during
 =item 0.05	
 
 Fixed: C<DESTROY()> method sometimes loses global values to build sql properties of new nodes.
+
+=item 0.06
+
+Fixed: C<DELETE()> override throws error on a missing key
 
 =back
 
