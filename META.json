@@ -34,10 +34,11 @@
          "requires" : {
             "DBD::SQLite" : "1.37",
             "DBI" : "1.57",
+            "XML::Parser" : "2.41",
             "XML::Parser::Nodes" : "0.04"
          }
       }
    },
    "release_status" : "stable",
-   "version" : "1.11"
+   "version" : "1.12"
 }

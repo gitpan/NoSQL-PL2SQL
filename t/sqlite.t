@@ -146,6 +146,7 @@ sub testchanges {
 ## Used for debugging
 sub funchanges {
 warn "\n" ;
+	my $name = shift ;
 	my $fun = shift ;
 	my $retr = TestRequest->sqlobject( $dsn => $assignedid ) ;
 
@@ -253,7 +254,8 @@ testchanges( 'yet another hashref element', sub {
 
 $request->{QBMSXML}->{Singup}->{hello} = 'welt' ;
 $retr[0]->{QBMSXML}->{Singup}->{hello} = 'welt' ;
-is( $retr[0]->{QBMSXML}->{Singon}->{hello}, 'welt' ) ;
+is( $retr[0]->{QBMSXML}->{Singon}->{hello}, 'welt', 
+		'modify internal reference' ) ;
 @retr = () ;
 
 # delete internal reference
@@ -456,10 +458,12 @@ $i++ ;
 NoSQL::PL2SQL::SQLObject( $user[$i]->{Email}, $dsn, 0 => $user[$i] ) ;
 
 sub stringtest {
+	die join ' ', caller unless @_ == 2 ;
+	my $name = shift ;
 	my $i = shift ;
 	$retr = NoSQL::PL2SQL::SQLObject( $user[$i]->{Email}, $dsn, 0 ) ;
 	is( objectvalue( NoSQL::PL2SQL::SQLClone( $retr ) ), 
-			objectvalue( $user[$i] ) ) ;
+			objectvalue( $user[$i] ), $name ) ;
 	}
 
 stringtest( 'key on string', 0 ) ;

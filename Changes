@@ -71,3 +71,10 @@ Revision history for Perl extension NoSQL::PL2SQL.
 	- Overloaded DESTROY method now fails gracefully
 	- Added method descriptors to sqlite.t so I can interprete
 	  the CPAN test reports
+
+1.12  Thu Dec 20 13:30:05 EST 2012
+	- Changed XML::Parser requirement to 2.41
+	- stringtest() fixed in sqlite.t
+	- Fixed insertall().  Scalars with refct > 1 need to be preserved.  
+	  When the delete flag is set, the chained string was recalculated 		  on undefined scalar data, resulting in a broken chain.  
+
