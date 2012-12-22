@@ -78,3 +78,6 @@ Revision history for Perl extension NoSQL::PL2SQL.
 	- Fixed insertall().  Scalars with refct > 1 need to be preserved.  
 	  When the delete flag is set, the chained string was recalculated 		  on undefined scalar data, resulting in a broken chain.  
 
+1.13  Sat Dec 22 09:52:39 EST 2012
+	- Fixed insertall() again (false postive on zero length strings)
+

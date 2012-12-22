@@ -27,7 +27,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '1.12';
+our $VERSION = '1.13';
 
 require XSLoader;
 XSLoader::load('NoSQL::PL2SQL', $VERSION);

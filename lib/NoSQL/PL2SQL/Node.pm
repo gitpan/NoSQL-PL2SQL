@@ -21,7 +21,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 # Preloaded methods go here.
 
@@ -275,7 +275,7 @@ sub insertall {
 		$self->{sql}->{refto} = delete $self->{sql}->{item}
 				if $self->{key} eq 'perldata' ;
 		$self->{sql}->{chainedstring} = $ids{string}
-				if $self->{sql}->{stringdata} ;
+				if exists $self->{sql}->{stringdata} ;
 
 		$self->sql( $dsn ) ;
 
@@ -392,6 +392,10 @@ Fixed bug: C<stringsplit()> converted 0 length strings to undefined
 =item 0.04	
 
 Fixed bug: C<insertall()> updating deleted records broke scalar chains
+
+=item 0.05	
+
+C<insertall()> more durable approach for 0.04
 
 =back
 
