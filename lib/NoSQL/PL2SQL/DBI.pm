@@ -33,7 +33,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 # Preloaded methods go here.
 
@@ -186,14 +186,11 @@ sub rows_array {
 	return @out ;
 	}
 
-sub perldata {
-	my $self = shift ;
-	my $sql = shift ;
-	my @out = $self->rows_hash( $sql ) ;
-	return @out if @out && ! exists $out[0]{id} ;
-	my %r = map { $_->{id} => $_ } @out ;
+sub NoSQL::PL2SQL::DBI::perldata::perldata {
+	my $ary = shift ;
+	return {} if @$ary == 0 || ! exists $ary->[0]->{id} ;
+	my %r = map { $_->{id} => $_ } @$ary ;
 	return \%r ;
-#	return bless \%r, 'NoSQL::PL2SQL::Perldata' ; ## see perlmonks #989671
 	}
 
 sub new {
@@ -322,9 +319,9 @@ sub fetch {
 			} @_ ;
 
 	my $sql = join ' ', $delete || 'SELECT * FROM %s WHERE', $nvp ;
-	return $self->dbconnected && ! defined $delete?
-			$self->perldata( $sql ):
-			$self->do( $sql ) ;
+	return $self->do( $sql ) if defined $delete || ! $self->dbconnected ;
+	my @out = $self->rows_hash( $sql ) ;
+	return wantarray? @out: bless \@out, __PACKAGE__ .'::perldata' ;
 	}
 
 ## Implementation Specific.  Default method is MySQL syntax.
@@ -449,7 +446,7 @@ NoSQL::PL2SQL::DBI - Base Perl RDB driver for NoSQL::PL2SQL
   ## Internally Used Methods
   
   my @nvp = ( [ $name, $value, $isstring ], ... ) ;
-  my $perldata = $dsn->fetch( @nvp ) ;
+  my $perldata = $dsn->fetch( @nvp )->perldata ;
   my %results = $dsn->insert( @nvp ) ;
   my %results = $dsn->update( $recordid, @nvp ) ;
   $dsn->delete( $recordid ) ;
@@ -490,9 +487,13 @@ The NoSQL::PL2SQL::DBI AUTOLOAD overrides any DBI method.  Because the RDB table
 
 Additionally, NoSQL::PL2SQL::DBI provides versions of C<< DBI->fetchrow_arrayref() >> and C<< DBI->fetchrow_hashref >>- C<rows_array()> and C<rows_hash()> respectively.  These methods take an SQL statement as an argument, perform preparation and execution, and return the same output as their counterparts.
 
-C<perldata()> is nearly the same as C<rows_hash()>, except the output is a hash reference that keys each record on its recordid.  Originally, the hashref was blessed as a NoSQL::PL2SQL::Perldata object, hence the name.  All NoSQL::PL2SQL data structures are implemented as a tree of nodes.  And the static methods in NoSQL::PL2SQL::Perldata are used to access the RDB records as though they were tree nodes.  
+C<rows_array()> and C<rows_hash()> may be used as a convenience.  However, these methods required syntactically appropriate SQL instead of something independent of the underlying database.  The C<fetch()> method should be used instead of C<rows_hash()>.
 
-All RDB inquiries made by NoSQL::PL2SQL expect a hashref structure similar to C<perldata()>'s.  As of v1.0, only the C<fetch()> method is used.  Additionally, NoSQL::PL2SQL passes its requests as a list of NVP's (name value pairs).  The nvp arguments are arrayrefs consisting of a string name, a scalar value, and a boolean that identifies the value as a string.  The boolean argument controls the SQL construction and triggers encoding, via C<stringencode()>.  C<delete()>, however, optionally takes a recordid as a single argument.
+If the output is piped into the C<perldata()> method, C<< fetch()->perldata >>, the results are a set of NVP's keyed in the recordid.  All NoSQL::PL2SQL data structures are implemented as a tree of nodes.  And each NVP (originally blessed as I<NoSQL::PL2SQL::Perldata>) represents a node.  In the NoSQL::PL2SQL::Perldata class, unblessed nodes are passed to static methods.
+
+To ensure SQL independence, C<NoSQL::PL2SQL::DBI> methods are called using a set of nvp arguments: Each arguments is an arrayref consisting of a string name, a scalar value, and a boolean to distinguish string values.  The boolean argument controls the SQL construction and triggers encoding, via C<stringencode()>.  
+
+C<delete( $id )> shows a single scalar argument which is understood to mean C<< delete( [ id => $id ] )>>.
 
 The C<insert()> method is trivial.  Implementations only need to override the C<update()> method.  C<insert()> needs to return a recordid value, which is determined by the underlying RDB application.  Both C<insert()> and C<update()> return NVP's as a hash reference containing an element named "id".  The other element, "sqlresults", contains the only useful output when the connected database is the default "NoSQL::PL2SQL::DBI::Null".
 
@@ -668,6 +669,10 @@ Fixed a bug in the $xmlschema "CREATE INDEX" node
 Modified C<sqlstatement()>
 
 Added C<indexschema()> for NoSQL::PL2SQL:Simple
+
+=item 0.11
+
+C<perldata()> now B<always> returns a hash ref and C<fetch()> B<always> returns an array.  In order to combine duplicated functionality, C<perldata()> is now invoked as C<< $dsn->fetch()->perldata >>.
 
 =back
 

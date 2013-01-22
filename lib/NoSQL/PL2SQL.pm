@@ -27,7 +27,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '1.13';
+our $VERSION = '1.14';
 
 require XSLoader;
 XSLoader::load('NoSQL::PL2SQL', $VERSION);
@@ -108,7 +108,7 @@ sub sqlobject {
 
 	if ( defined $objectid && defined $object ) {
 		my $perldata = $dsn->fetch( [ objectid => $objectid, 0 ],
-				[ objecttype => $package, 1 ] ) ;
+				[ objecttype => $package, 1 ] )->perldata ;
 		return sqlcarp( $package, $errors[4], 
 				  { $errors[4] => $perldata },
 				  @args, "Duplicate object $objectid." )
@@ -124,10 +124,8 @@ sub sqlobject {
 
 	my $self = bless {}, 'NoSQL::PL2SQL::Object' ;
 	$self->{sqltable} = $dsn ;
-	$self->{perldata} = 
-			## hardcoded arguments for now
-			$dsn->fetch( [ objectid => $objectid, 0 ],
-			  [ objecttype => $package, 1 ] ) ;
+	$self->{perldata} = $dsn->fetch( [ objectid => $objectid, 0 ],
+			  [ objecttype => $package, 1 ] )->perldata ;
 	return sqlcarp( $package, $errors[5], {}, @args, 
 			"Object not found for object $objectid." )
 			unless scalar values %{ $self->{perldata} } ;

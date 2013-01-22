@@ -81,3 +81,8 @@ Revision history for Perl extension NoSQL::PL2SQL.
 1.13  Sat Dec 22 09:52:39 EST 2012
 	- Fixed insertall() again (false postive on zero length strings)
 
+1.14  Tue Jan 22 12:36:46 EST 2013
+	- NoSQL::PL2SQL::DBI::perldata() has been changed again.  New 
+	  invocation:
+	    $dsn->fetch()->perldata
+
