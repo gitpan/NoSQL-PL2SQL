@@ -21,7 +21,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 # Preloaded methods go here.
 
@@ -269,11 +269,16 @@ sub insertall {
 				if $self->memory ;
 		$self->{sql}->{item} = $ids{ $pid } || 0
 				if exists $ids{ $pid } 
-				&& $self->{key}
-				&& $self->{key} ne 'string'
-				&& $self->{key} ne 'scalar' ;
-		$self->{sql}->{refto} = delete $self->{sql}->{item}
-				if $self->{key} eq 'perldata' ;
+				  && $self->{key}
+				  && $self->{key} ne 'string'
+				  && $self->{key} ne 'scalar' ;
+
+		if ( $self->{key} eq 'perldata' ) {
+			$self->{sql}->{intdata} = 0 ;
+			$self->{sql}->{deleted} = 0 ;
+			$self->{sql}->{refto} = delete $self->{sql}->{item} ;
+			}
+
 		$self->{sql}->{chainedstring} = $ids{string}
 				if exists $self->{sql}->{stringdata} ;
 
@@ -397,9 +402,11 @@ Fixed bug: C<insertall()> updating deleted records broke scalar chains
 
 C<insertall()> more durable approach for 0.04
 
+=item 0.06	
+
+C<insertall()> initializes the I<deleted> and I<intdata> properties of the header node sql record.
+
 =back
-
-
 
 =head1 SEE ALSO
 

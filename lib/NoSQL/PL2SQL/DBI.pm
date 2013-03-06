@@ -33,7 +33,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 # Preloaded methods go here.
 
@@ -186,16 +186,15 @@ sub rows_array {
 	return @out ;
 	}
 
-sub NoSQL::PL2SQL::DBI::perldata::perldata {
-	my $ary = shift ;
-	return {} if @$ary == 0 || ! exists $ary->[0]->{id} ;
-	my %r = map { $_->{id} => $_ } @$ary ;
-	return \%r ;
-	}
-
 sub new {
 	my $package = shift ;
-	my $tablename = shift ;
+	my $tablename = shift( @_ ) || '%s' ;
+
+	if ( ref $package ) {
+		$tablename = $package->table ;
+		$package = ref $package ;
+		}
+
 	return bless [ $nulldbi, $tablename ], $package ;
 	}
 
@@ -247,16 +246,7 @@ sub lastinsertid {
 			  undef, undef, $self->table, 'id' ) ;
 	}
 
-###############################################################################
-##
-##  A special case of update() to handle two sets of NVP's; e.g
-##    where @values = ( [ objectid => $newid ] )
-##    and @conditions = ( [ objectid => $oldid ] )
-##  $nvp = NoSQL::PL2SQL::DBI->new('')->update( undef => @values )->{nvp} ;
-##  $dsn->sqlupdate( $nvp, @conditions ) ;
-##
-###############################################################################
-
+## Implementation Specific
 sub sqlupdate {
 	my $self = shift ;
 	my $nvp = shift ;
@@ -291,9 +281,10 @@ sub update {
 	## User data should never be passed to sqlstatement()
 	my $update = $self->sqlstatement( 'UPDATE %s' ) ;
 	my $insert = $self->sqlstatement( 'INSERT INTO %s' ) ;
-	push @sqllog, my $sql = defined $id? 
+	my $sql = defined $id? 
 			"$update SET $nvp WHERE id=$id":
 			"$insert ($keys) VALUES ($values)" ;
+	$self->debug( $sql ) if $self->dbconnected ;
 	my $sqlresults = $self->db->do( $sql ) ;	## do not combine
 	return { id => $id || $self->lastinsertid,
 			sqlresults => $sqlresults,
@@ -306,22 +297,39 @@ sub insert {
 	return $self->update( undef, @_ ) ;
 	}
 
+sub exclude {
+	shift @_ ;
+	my $package = join '::', __PACKAGE__, 'exclude' ;
+	my @out = map { bless $_, $package } @_ ;
+	return wantarray? @out: $out[0] ;
+	}
+
 ## Implementation Specific.  Default method is MySQL syntax.
 sub fetch {
 	my $self = shift ;
 	my $delete = ( @_ && ! ref $_[0] )? shift( @_ ): undef ;
 
 	my @pairsf = ( '%s=%s', '%s="%s"', '%s=NULL' ) ;
-	my $nvp = join ' AND ', map {
-			sprintf $pairsf[ defined $_->[1]? 
-			  $_->[2] || length $_->[1] == 0: 2 ],
-			$_->[0], $self->stringencode( $_->[1], ! $_->[2] )
-			} @_ ;
+	my @invert = ( '%s!=%s', '%s!="%s"', '%s NOT NULL' ) ;
 
-	my $sql = join ' ', $delete || 'SELECT * FROM %s WHERE', $nvp ;
+	my $exclude = ref $self->exclude( [] ) ;
+
+	my @terms = () ;
+	foreach ( @_ ) {
+		my @how = ref $_ eq $exclude? @invert: @pairsf ;
+		push @terms, sprintf 
+				$how[ defined $_->[1]? 
+				  $_->[2] || length $_->[1] == 0: 2 ],
+				$_->[0], 
+				$self->stringencode( $_->[1], ! $_->[2] ) ;
+		}
+
+	my $sql = join ' ', $delete || 'SELECT * FROM %s WHERE',
+			join ' AND ', @terms ;
 	return $self->do( $sql ) if defined $delete || ! $self->dbconnected ;
+
 	my @out = $self->rows_hash( $sql ) ;
-	return wantarray? @out: bless \@out, __PACKAGE__ .'::perldata' ;
+	return wantarray? @out: { map { $_->{id} => $_ } @out } ;
 	}
 
 ## Implementation Specific.  Default method is MySQL syntax.
@@ -429,75 +437,161 @@ NoSQL::PL2SQL::DBI - Base Perl RDB driver for NoSQL::PL2SQL
 
 =head1 SYNOPSIS
 
-  package NoSQL::PL2SQL::DBI::123SQL ;
-  use base qw( NoSQL::PL2SQL::DBI ) ;
+  ## Typical usage for PL2SQL
 
-  package MyArbitraryClass ;
-  use base qw( NoSQL::PL2SQL ) ;
-  use NoSQL::PL2SQL::DBI::123SQL ;
+    package MyArbitraryClass ;
+    use base qw( NoSQL::PL2SQL ) ;
+    use NoSQL::PL2SQL::DBI::123SQL ;
 
-  ## Primary User Methods
+  ## Primary PL2SQL operations
 
-  my $dsn = new NoSQL::PL2SQL::DBI::123SQL $tablename ;
-  $dsn->connect( $data_source, $username, $auth, \%attr ) ;
-  $dsn->do('DROP TABLE %s') ;
-  $dsn->loadschema ;
+    my $dsn = new NoSQL::PL2SQL::DBI::123SQL $tablename ;
+    $dsn->connect( $data_source, $username, $auth, \%attr ) ;
+    $dsn->do('DROP TABLE %s') ;
+    $dsn->loadschema ;
 
-  ## Internally Used Methods
+  ## Definition of 123SQL
+
+    package NoSQL::PL2SQL::DBI::123SQL ;
+    use base qw( NoSQL::PL2SQL::DBI ) ;
+
+  ## Construction operation methods 
+
+    $dsn->loadschema( $xmlschema ) ;
+
+    ## These two statements are nearly equivalent.  Except the schema
+    ## method never performs table name substitution.
+    $dsn->schema( $xmlschema ) ;
+    $dsn->new->loadschema( $xmlschema ) ;
+
+  ## Conditional operation methods
+
+    my @conditions = ( [ $name, $value, $isstring ], ... ) ;
+    my @exclusions = $dsn->exclude( [ $name, $value, $isstring ], ... ) ;
+
+    my @rows = $dsn->fetch( @conditions, @exclusions ) ;
+    my $perldata = $dsn->fetch( @conditions, @exclusions ) ;
+    $dsn->delete( @conditions, @exclusions ) ;
+
+    $dsn->delete( $id ) ;	## Equivalent to the statement below
+    $dsn->delete( [ id => $id ] ) ;
+
+  ## Data assignment operation methods
+
+    my @nvp = ( [ $name, $value, $isstring ], ... ) ;
+
+    my $results = $dsn->insert( @nvp ) ;
+    my $results = $dsn->update( $recordid, @nvp ) ;
+
+  ## Combined operation methods
+
+    $dsn->sqlupdate( 
+		$dsn->new->update( undef => @nvp )->{nvp},
+		@conditions ) ;
+
+  ## Internally used methods
   
-  my @nvp = ( [ $name, $value, $isstring ], ... ) ;
-  my $perldata = $dsn->fetch( @nvp )->perldata ;
-  my %results = $dsn->insert( @nvp ) ;
-  my %results = $dsn->update( $recordid, @nvp ) ;
-  $dsn->delete( $recordid ) ;
-  $dsn->delete( @nvp ) ;
-
-  my $encoded = $dsn->encodestring( $text ) ;
-  my $recno = $dsn->lastinsert ;
-  my @sql = $dsn->schema ;
+    my $response = $dsn->do( $sqltext ) ;
+    my $encoded = $dsn->encodestring( $text ) ;
+    my $recno = $dsn->lastinsertid ;
+    my @sql = $dsn->schema ;
   
   ## Utilities and debugging
 
-  $dsn->sqldump( $reset = 1 ) ;
-  $dsn->debug( $arbitrarystring ) ;
-  print join "\n", $dsn->sqldump() ;
+    $dsn->sqldump( $reset = 1 ) ;
+    $dsn->debug( $arbitrarystring ) ;
+    print join "\n", $dsn->sqldump() ;
 
-  my @fetchrows = $dsn->rows_hash('SELECT * FROM %s WHERE objectid=1') ;
-  my @fetchrows = $dsn->rows_array('SELECT * FROM %s WHERE objectid=1') ;
+    my @fetchrows = $dsn->rows_hash('SELECT * FROM %s WHERE objectid=1') ;
+    my @fetchrows = $dsn->rows_array('SELECT * FROM %s WHERE objectid=1') ;
 
-  my $sql = $dsn->sqlstatement( $sqlarg ) ;
-  my $db = $dsn->db ;
-  $tablename = $dsn->table ;
+    my $sql = $dsn->sqlstatement( $sqlarg ) ;
+    my $db = $dsn->db ;
+    my $tablename = $dsn->table ;
 
 =head1 DESCRIPTION
 
-NoSQL::PL2SQL::DBI provides an abstraction for connecting to an external database.  Subclass definitions should be used for specific implementations.  These methods may be generally useful, but are intended for use with NoSQL::PL2SQL, an object backing mechanism.
+NoSQL::PL2SQL::DBI was developed as part of NoSQL::PL2SQL to provide an abstract representation of an RDB table.  Database specific implementations should be defined as subclasses to account for differences in SQL syntax, data definitions and features.  
 
-An end user implementing NoSQL::PL2SQL, or any class which implements this package, will access this driver using the constructor and the 3 methods listed above as "Primary User Methods".
+NoSQL::PL2SQL users only need the constructor and the 3 methods listed above as "Primary PL2SQL operations".  In the PL2SQL interface, a NoSQL::PL2SQL::DBI instance is used to represent a data source.
 
-Anyone implementing a subclass needs to understand the "Internally Used Methods" above.
+A NoSQL::PL2SQL::DBI instance represents a single table in an RDB, with two properties:  A database handle and a string to reference a particular table.  Thus, there are a couple accessor methods, but mostly this class is responsible for the SQL translation.
 
-Developers who are comfortable with RDB can design a thin object interface using any number of tools, such as DBIx::Class.  NoSQL::PL2SQL is designed for developers of thicker objects that may be more logical and require data flexibility.  For these developers, where the database is merely a mechanism for object persistance, NoSQL::PL2SQL provides a simple abstraction with a trivial interface, and great portability.
+PL2SQL simply provides a persistance mechanism for Perl objects that's tied to an RDB table.  Its interface is implemented primarily as declarations and definitions, with only a handful of procedural operations- there's no correspondence between an SQL operation (eg SELECT) and a PL2SQL function call (eg fetch).  Internally, of course, PL2SQL needs some SQL interface.  This functionality is consolidated in the NoSQL::PL2SQL::DBI package.  Consquently, users who want a translator for low-level database access can use NoSQL::PL2SQL::DBI directly.
 
-One of NoSQL::PL2SQL's features is a "universal" table definition that can accomodate arbitrary and indeterminate data structures.  This flexibility means that a single table can be used for heterogeneous instantiations of different classes.  In many cases, a single table can serve the data needs of an entire application.  Consequently, a NoSQL::PL2SQL::DBI object is primarily defined by the tablename using a constructor argument.
+There are basically four types of operations:
 
-A NoSQL::PL2SQL:DBI instance consists of one other property, a database handle.  This handle is defined using the C<connect()> method with the same arguments as the default C<< DBI->connect() >> method.  Otherwise, the default handle is a NoSQL::PL2SQL::DBI::Null object that simply reflects statement arguments, and can be useful for debugging.
+=head3 Construction Operations
 
-The NoSQL::PL2SQL::DBI AUTOLOAD overrides any DBI method.  Because the RDB table is abstracted within, SQL statements do not need to specify a table.  The C<sprintf()> notation is used instead- replacing '%s' in any SQL construction with the table name first.  The C<sqlstatement()> method is always used for this translation.
+Operations such as SQL I<CREATE> that are not called as part of normal operation require a bit more preparation.  The PL2SQL::DBI method C<loadschema()> performs these functions. Its single argument contains all the definitions as block of XML text.
 
-Additionally, NoSQL::PL2SQL::DBI provides versions of C<< DBI->fetchrow_arrayref() >> and C<< DBI->fetchrow_hashref >>- C<rows_array()> and C<rows_hash()> respectively.  These methods take an SQL statement as an argument, perform preparation and execution, and return the same output as their counterparts.
+=head3 Conditional Operations
 
-C<rows_array()> and C<rows_hash()> may be used as a convenience.  However, these methods required syntactically appropriate SQL instead of something independent of the underlying database.  The C<fetch()> method should be used instead of C<rows_hash()>.
+Operations such as SQL I<SELECT> and I<DELETE> use defined conditionals.  The corresponding PL2SQL::DBI methods are C<fetch()> and C<delete()>.
 
-If the output is piped into the C<perldata()> method, C<< fetch()->perldata >>, the results are a set of NVP's keyed in the recordid.  All NoSQL::PL2SQL data structures are implemented as a tree of nodes.  And each NVP (originally blessed as I<NoSQL::PL2SQL::Perldata>) represents a node.  In the NoSQL::PL2SQL::Perldata class, unblessed nodes are passed to static methods.
+=head3 Data Assignment Operations
 
-To ensure SQL independence, C<NoSQL::PL2SQL::DBI> methods are called using a set of nvp arguments: Each arguments is an arrayref consisting of a string name, a scalar value, and a boolean to distinguish string values.  The boolean argument controls the SQL construction and triggers encoding, via C<stringencode()>.  
+Operations such as SQL I<INSERT> use only NVP's (name value pairs) to correspond to the data assignments.  SQL I<UPDATE> also falls into this category when the changes are to be applied to a single row record.  The corresponding PL2SQL::DBI methods are C<insert()> and C<update()>.
 
-C<delete( $id )> shows a single scalar argument which is understood to mean C<< delete( [ id => $id ] )>>.
+=head3 Combined Operations
 
-The C<insert()> method is trivial.  Implementations only need to override the C<update()> method.  C<insert()> needs to return a recordid value, which is determined by the underlying RDB application.  Both C<insert()> and C<update()> return NVP's as a hash reference containing an element named "id".  The other element, "sqlresults", contains the only useful output when the connected database is the default "NoSQL::PL2SQL::DBI::Null".
+When a SQL I<UPDATE> request needs to be applied to multiple row records, both NVP and Conditional definitions are required.  This operation is seldom required, and is a bit more cumbersome.  The corresponding PL2SQL::method is C<sqlupdate()>.
 
-The following methods are implemented, by default, to use an SQL syntax compatible with MySQL and SQLite.  Other RDB applications may require overriding these methods:
+The methods listed above require arguments to define the conditionals and NVP's.  Each conditional or NVP term is represented by an array consisting of a name, value, and optional boolean that explicity identifies the value as a string.  An undefined value corresponds to an SQL NULL.  Multiple terms can be passed to these methods.
+
+A conditional term can be defined as an exclusion using the C<exclude()> command.  Exclusion conditionals are treated as logical inversions.
+
+The C<update()> method has a special requirement:  The first argument must be a scalar that identifies a particular table row record or the resulting SQL has no conditional clause.
+
+The C<fetch()> method returns data instead of a confirmation count.  In an array context, C<fetch()> returns records in the same format as C<DBI::fetchrow_hashref()>.  The row data is nearly the same when C<fetch()> is called in a scalar context.  Each row is a value in a hash reference, keyed on the row id.
+
+The C<insert()> and C<update()> methods have been overloaded to return a complex value:
+
+  $results->{id}	record id resulting from an insert operation
+  $results->{sql}	sql results of an operation
+  $results->{nvp}	the name/values clause of the SQL translation
+
+The C<sqlupdate()> method requires both conditional and data assignment arguments.  To distinguish between them, the data assignment arguments are first fed into the C<update()> method, the name/values clause is extracted via the result's I<nvp> property, and that string is passed as the first scalar argument to the C<sqlresults()> method.
+
+The ability to extract literal SQL translations is a feature built into every method.  Since the $dsn data source instance needs an active database handle to be effective, a literal SQL translation is returned on every method of an unconnected instance.  This feature can be useful for debugging:
+
+  ## This statement performs a database operation
+  $results = $dsn->update( 5, [ stringdata => 20, 1 ] ) ;
+
+  ## This statement does not perform a database operation
+  $results = $dsn->new->update( 5, [ stringdata => 20, 1 ] ) ;
+
+  ## The return value may vary in this context
+  $response = $dsn->new->fetch( 5 ) ;
+
+In the first two C<update()> examples, the return value has the same structure regardless of whether a database operation has been performed.  I<< $results->{sql} >> contains the results of the operation.  In the first, this value reflects the number of affected table rows.  In the second, this value contains translated SQL.  The difference between the two is that the second example applies the C<update()> method to a transient instance created with the C<new()> constructor.
+
+In C<fetch()>, C<delete()> and the other conditional operation methods, the sql translation is returned directly.  With no database handle, the C<fetch()> results are the same in scalar or array context.
+
+The C<do()> method performs the second half of these operations and applies the translated SQL as a database operation.  Extending the examples above:
+
+  $dsn->do( $results->{sql} ) ;
+  $dsn->do( $response ) ;
+
+The C<do()> method always takes a string SQL representation.  Because the table name is embedded as an instance property, the SQL argument may use '%s' in place of the table name.  The C<do()> method automatically performs the substitution.
+
+NoSQL::PL2SQL::DBI acts like a subclass of DBI in that C<AUTOLOAD()> attempts to apply any undefined methods to the internal database handle.  Every invocation is called like the C<do()> method: C<AUTOLOAD> assumes a single string argument, and applies the '%s' table name substitution describe above.
+
+=head1 SCHEMA
+
+Most SQL operations can be easily implemented as simple methods, but we have not yet acknowledged the 800 pound gorilla required to map the SQL I<Create> operations to a function.
+
+The first challenge is that the I<Create> function is fairly complex and implementation dependent.  However, since XML and SQL have many similar properties, XML is used to define generic schemas.  Specific methods are used to translate XML nodes into SQL clauses.  Parent node translations roll all the clauses into a single SQL statement.  NoSQL::PL2SQL::DBI::Schema and its subclasses provide the engine recursing through structured XML.
+
+Overloaded methods can be used for specific translation requirements.  So ideally, the XML definition should be independent of the database implementations.  Unfortunately, C<loadschmema()> only performs a syntactical translation.  Any differences in the definition arising from implementation specific data type definitions or features need to be explicit in the XML definition.
+
+Consequently, the inelegant solution is to use a different XML schema in each of NoSQL::PL2SQL::DBI's implementation subclasses.  Two are actually defined:  In addition to $xmlschema, $indexschema is used by NoSQL::PL2SQL::Simple.  Ultimately, others need to be able to extend PL2SQL with their own data definitions, and also use the features independently of PL2SQL.  However, this problem is currently overshadowed by the need for more DBI subclass implementations.
+
+=head1 IMPLEMENTATION SUBCLASSES
+
+Currently, only MySQL and SQLite implementation subclasses are included in the PL2SQL package.  The remaining discussion is for developers who wish to build new implementation subclasses.
+
+The following methods are implemented, by default, to use an SQL syntax compatible with MySQL and SQLite.  Other RDB implementations may require overriding these methods:
 
 =over 8
 
@@ -511,42 +605,13 @@ The following methods are implemented, by default, to use an SQL syntax compatib
 
 =item C<lastinsertid()>
 
-=item C<indexschema()>
-
 =item C<stringencode()>
+
+=item Schema definitions
 
 =back
 
-=head1 GENERAL USE
-
-As of version 0.10, features have been added to make the DBI more useful for schemas other than the default.  For example, delete now takes conditional arguments similar to C<fetch()>:
-
-  $dsn->delete( [ textkey => 20 ] ) ;
-
-A more complicated example involves an update request, which requires two sets of nvp's:  The first defines the values and the second defines a conditional.  Since C<update()> is a variation of C<insert()> and accepts no conditional arguments, use C<sqlupdate()> instead:
-
-  my @values = ( [ refto => 20 ] ) ;
-  my @conditions = ( [ objectid => 1 ] ) ;
-
-  my $dsn = NoSQL::PL2SQL::DBI->new('mytable') ;	## unconnected
-  print $dsn->fetch( @conditions ) ;		## pass conditional nvp's
-  print $dsn->insert( @values )->{sqlresults} ;	## pass value nvp's
-
-  ## Generate the values clause as a separate string
-  my $nvp = NoSQL::PL2SQL::DBI->new('')->insert( @values )->{nvp} ;
-
-  ## Pass that values clause into the sqlupdate() method
-  print $dsn->sqlupdate( $nvp, @conditions ) ;
-
-  ## Prints: UPDATE mytable SET refto=20 WHERE objectid=1
-
-Implementations of PL2SQL::DBI handle slight variations of SQL.  And the translation instructions are distributed among various methods somewhat arbitrarily:  The command syntax is defined in sqlupdate(); the values clause syntax is defined in update(); and the conditional clause is defined in fetch().
-
-=head1 SCHEMA
-
-The purpose of the schema is to build a data source that conforms to the NVP arguments of the above methods.  The C<loadschema()> method triggers the build.  So implementations that override C<loadschema()> can ignore the specification below.  However, database applications that use SQL as an interface should be implemented consistently.
-
-In NoSQL::PL2SQL::DBI and its implementations, the C<schema()> method should return one or more SQL directives.  The default C<loadschema()> feeds each into C<< NoSQL::PL2SQL::DBI->do() >>.  Consequently, the SQL statements should always refer to the table name as '%s'.  C<< NoSQL::PL2SQL::DBI->schema() >> takes no argument.  Instead, it uses an internal definition.  The default definition, designed for MySQL, has an XML format using an ad-hoc XML definition.  This definition may be replaced with a more universal standard, or hopefully prove to be suitably extensible.
+The C<loadschema()> should not be overridden.  The C<schema()> method is responsible for the XML to SQL translation.  Through a subclassing system, each XML node calls a distinct C<schema()> method for translation.
 
 There are two default C<schema()> definitions.  The first, C<< NoSQL::PL2SQL::DBI->schema() >>, converts the XML definition into an XML::Parser::Nodes tree.  This tree is reblessed into another package as follows:
 
@@ -565,7 +630,7 @@ By default, C<< Schema->schema() >> calls the schema method on its child nodes. 
   package NoSQL::PL2SQL::DBI::123SQL::Schema::sql ;
   use base qw( NoSQL::PL2SQL::DBI::Schema ) ;
 
-This definition, however, is only required for explict SQL output.  Otherwise, the default C<< Schema->schema() >> method is called in recursion on the next level of child nodes.  The nodes below are shown as XML and with defined methods:
+This definition, however, is only required for explict SQL translation.  Otherwise, the default C<< Schema->schema() >> method is called in recursion on the next level of child nodes.  The nodes below are shown as XML and with defined methods:
 
   ## <table command="CREATE" ...>
   ##   <column ... />
@@ -650,11 +715,11 @@ Added C<debug()> method
 
 =item 0.05
 
-Generalized C<fetch()> and C<perldata()> methods to handle arbitrary schemas
+Generalized C<fetch()> and C<perldata()> methods to handle arbitrary schemas.
 
-C<perldata()> arguments are explicitly defined
+C<perldata()> arguments are now explicitly defined.
 
-C<delete()> now accepts the same arguments as C<fetch()>
+C<delete()> now accepts the same arguments as C<fetch()>.
 
 With an argument C<table()> creates a second DSN instance chained via C<db()>.
 
@@ -664,18 +729,25 @@ Added C<sqlupdate()>.
 
 Added nvp element to C<update()>'s return value.
 
-Fixed a bug in the $xmlschema "CREATE INDEX" node
+Fixed a bug in the $xmlschema "CREATE INDEX" node.
 
 Modified C<sqlstatement()>
 
-Added C<indexschema()> for NoSQL::PL2SQL:Simple
+Added C<indexschema()> for NoSQL::PL2SQL:Simple.
 
 =item 0.11
 
 C<perldata()> now B<always> returns a hash ref and C<fetch()> B<always> returns an array.  In order to combine duplicated functionality, C<perldata()> is now invoked as C<< $dsn->fetch()->perldata >>.
 
-=back
+=item 0.12
 
+Added C<exclude()> method.
+
+Removed the pesky C<perldata()> method- this output is now returned by C<fetch()> in scalar context.  NO BACKWARDS COMPATIBILITY.
+
+Rewrote the documentation to reflect less dependence on PL2SQL.
+
+=back
 
 =head1 SEE ALSO
 

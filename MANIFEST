@@ -16,5 +16,6 @@ lib/NoSQL/PL2SQL/Perldata.pm
 lib/NoSQL/PL2SQL/Object.pm
 lib/NoSQL/PL2SQL.pm
 samples/pl2sql/comments.pl
+samples/pl2sql/deadlock.pl
 META.yml                                 Module YAML meta-data (added by MakeMaker)
 META.json                                Module JSON meta-data (added by MakeMaker)

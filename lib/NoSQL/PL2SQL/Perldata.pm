@@ -83,7 +83,7 @@ sub fetchextract {
 	if ( grep $item->[0] eq $_, qw( item scalar ) ) {
 		$out = bless { data => $item->[1], 
 				top => $key, 
-				reftype => 'item' }, ref $sqlobject ;
+				reftype => 'item' }, $sqlobject->package ;
 		map { $out->{$_} = $sqlobject->{$_} }
 				@NoSQL::PL2SQL::members ;
 		return @out, ( @nvpflag? $o->{ $nvpflag[0] }: () ), $out ;

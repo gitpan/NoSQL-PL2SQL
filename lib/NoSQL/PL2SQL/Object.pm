@@ -1,3 +1,164 @@
+package NoSQL::PL2SQL::Clone ;
+our @ISA = qw( NoSQL::PL2SQL::Object ) ;
+use strict;
+use warnings;
+
+sub update {
+	my $self = shift ;
+	my $data = $self->{globals}->{memory}->{ $self->objectkey }->[0] ;
+
+	if ( $self->{reftype} eq 'hashref' ) {
+		my %out = map { $_ => NoSQL::PL2SQL::Object::item( 
+				$data->{$_} )->[1] || $data->{$_} } 
+				keys %$data ;
+		$self->{data} = \%out ;
+		}
+	elsif ( $self->{reftype} eq 'arrayref' ) {
+		my @out = map { NoSQL::PL2SQL::Object::item( $_ ) || $_ }
+				@$data ;
+		$self->{data} = \@out ;
+		}
+	elsif ( $self->{reftype} eq 'scalarref' ) {
+		$self->{data} = \$data ;
+		}
+	else {
+		$self->{data} = $data ;
+		}
+	}
+
+sub sqlclone {
+	my $self = shift ;
+	my $data = $self->{data} ;
+	my $out ;
+
+	if ( $self->{reftype} eq 'hashref' ) {
+		my %o = map { $_ => innerclone( $data->{ $_ } ) } 
+				keys %$data ;
+		$out = $self->mybless( \%o ) ;
+		}
+	elsif ( $self->{reftype} eq 'arrayref' ) {
+		my @o = map { innerclone( $_ ) } @$data ;
+		$out = $self->mybless( \@o ) ;
+		}
+	elsif ( $self->{reftype} eq 'scalarref' ) {
+		my $o = $$data ;
+		$out = $self->mybless( \$o ) ;
+		}
+	else {
+		$out = $data ;
+		}
+
+	for my $v ( values %{ $self->{globals}->{memory} } ) {
+		my $item = NoSQL::PL2SQL::Object::item( $v->[0] ) ;
+		delete $item->[1]->{clone} if $item && $item->[1] ;
+		}
+
+	return $out ;
+	}
+
+sub innerclone {
+	return NoSQL::PL2SQL::Object::innerclone( @_ ) ;
+	}
+
+sub DESTROY {
+	my $self = shift ;
+
+	$self->{globals}->{lock} ||= new NoSQL::PL2SQL::Lock $self
+			if $self->{data} && ! $self->{globals}->{rollback} ;
+	}
+
+
+package NoSQL::PL2SQL::Lock ;
+use strict;
+use warnings;
+
+my @errors ;
+
+sub new {
+	my $package = shift ;
+	my $o = shift ;
+	my $dsn = $o->{sqltable} ;
+	my $header = $o->{globals}->{header} ;
+	my $out = [ $dsn, $header ] ;
+
+  	my $lock = $dsn->new->update( undef => [ deleted => 1 ] )->{nvp} ;
+	my $incr = $dsn->new->update( undef => 
+			[ intdata => $header->{intdata} +1 ] )->{nvp} ;
+
+	for ( my $ct = 0 ; ! setlock( $dsn, $lock, $header->{id} ) ; $ct++ ) {
+		select undef, undef, undef, .200 ;  ## wait 5 seconds
+		next if $ct < 50 ;
+
+		## deadlock failure
+		@errors = NoSQL::PL2SQL->sqlerror unless @errors ;
+		NoSQL::PL2SQL::sqlcarp( $header->{objecttype}, $errors[7], 
+				{ timestamp => time, 
+				  recordid => $header->{id} },
+				$o->sqlclone,
+				sprintf "%s: %d", $errors[7], $o->{top} ) ;
+
+		$o->{globals}->{rollback} = 1 ;
+		return $out ;
+		}
+
+	my $updates = $dsn->sqlupdate( $incr, 
+			[ id => $header->{id} ], 
+			[ intdata => $header->{intdata} ] ) ;
+
+	unless ( $updates *1 ) {
+		$o->{globals}->{rollback} = 1 ;
+		push @$out, $o->mybless( $o->sqlclone ) ;
+		my $serial = $dsn->fetch( [ id => $header->{id} ] 
+				)->{ $header->{id} }->{intdata} || 0 ;
+  		$incr = $dsn->new->update( 
+				undef => [ intdata => ++$serial ] )->{nvp} ;
+		$dsn->sqlupdate( $incr, [ id => $header->{id} ] ) ;
+		}
+
+	return bless $out, $package ;
+	}
+
+sub setlock {
+	my $dsn = shift ;
+	my $lock = shift ;
+	my $id = shift ;
+	my $r = $dsn->sqlupdate( $lock, 
+			[ id => $id ], 
+			$dsn->exclude( [ deleted => 1 ] ) ) ;
+	return $r *1 ;
+	}
+
+sub DESTROY {
+	my $self = shift ;
+	my $dsn = $self->[0] ;
+	my $header = $self->[1] ;
+
+	if ( @$self == 3 ) {
+		## delete all records except header
+		$dsn->delete( [ objectid => $header->{objectid} ], 
+				[ objecttype => $header->{objecttype}, 1 ],
+				$dsn->exclude( [ id => $header->{id} ] )
+				) ; 
+
+		## insert clone
+		my @nodes = NoSQL::PL2SQL::Node->factory(
+				0, $header->{objectid}, $self->[2] ) ;
+		pop @nodes ;
+		my ( $ll, $refs ) = NoSQL::PL2SQL::Node->insertall(
+				$dsn, NoSQL::PL2SQL::Node->combine( @nodes )
+				) ;
+
+		## swap out new header
+		my $refto = $dsn->new->update( undef, [ refto => $ll ] 
+				)->{nvp} ;
+		$dsn->sqlupdate( $refto, [ id => $header->{id} ] ) ;
+		}
+
+	my $unlock = $dsn->new->update( undef => [ deleted => 0 ] )->{nvp} ;
+	$dsn->sqlupdate( $unlock, [ id => $header->{id} ] ) ;
+	}
+
+
 package NoSQL::PL2SQL::Object ;
 
 use 5.008009;
@@ -22,13 +183,13 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 # Preloaded methods go here.
 
 sub TIEHASH {
 	my $self = shift ;
-	my $out = bless { %$self }, ref $self ;
+	my $out = bless { %$self }, $self->package ;
 	$out->{top} = shift @_ if @_ ;
 	$out->{reftype} = $out->record->{reftype} ;
 	return $out ;
@@ -36,7 +197,7 @@ sub TIEHASH {
 
 sub TIEARRAY {
 	my $self = shift ;
-	my $out = bless { %$self }, ref $self ;
+	my $out = bless { %$self }, $self->package ;
 	$out->{top} = shift @_ if @_ ;
 	$out->{reftype} = $out->record->{reftype} ;
 	return $out ;
@@ -44,24 +205,26 @@ sub TIEARRAY {
 
 sub TIESCALAR {
 	my $self = shift ;
-	my $out = bless { %$self }, ref $self ;
+	my $out = bless { %$self }, $self->package ;
 	$out->{top} = shift @_ if @_ ;
 	$out->{data} = shift ;
 	$out->{reftype} = $out->record->{reftype} ;
 	return $out ;
 	}
 
+## sub destroy {}	## for ctags
 ## avoid running during global destruction
 sub DESTROY {
 	my $self = shift ;
 	my @xml = () ;
 
+	delete $self->{globals}->{clone} ;
+
 	return if $self->{globals}->{rollback} ;
 	return unless $self->{update} ;
-	return if $self->{top} && ! $self->record ;
+	return if $self->{top} && ! $self->record ;	## deleted
 
-	map { $self->{sqltable}->delete( $_ ) } 
-			@{ $self->{delete} || [] } ;
+	map { $self->{sqltable}->delete( $_ ) } @{ $self->{delete} || [] } ;
 
 	if ( $self->{top} ) {
 		@xml = $self->updates ;
@@ -187,12 +350,14 @@ sub load {
 
 	foreach my $o ( grep ref $_, @elements ) {
 		my @oo = @{ item( $o ) } ;
+		next unless $oo[1]{top} ;
 
 		my $k = $self->{globals}->{records}->{ $oo[1]{top} } ;
-		$self->{data} = $self->{globals}->{memory}->{$k}->[0] if $k ;
+		my $rec = $self->{globals}->{memory}->{$k} if $k ;
+		$self->{data} = $rec->[0] if $rec ;
 
-		$self->{globals}->{records}->{ $oo[1]{top} }
-				= overload::StrVal( $self ) ;
+		$self->{globals}->{records}->{ $oo[1]{top} } 
+				= $self->objectkey ;
 		$self->{globals}->{refcount}->{ $oo[1]{top} }++ ;
 
 		my $refto = $oo[1]{reftype} eq 'scalarref'?
@@ -227,11 +392,12 @@ sub loadscalarref {
 sub memorymap {
 	my $self = shift ;
 	my $target = shift ;
-	my $k = overload::StrVal( $self ) ;
+	my $k = $self->objectkey ;
 	my $top = @_? shift( @_ ): $self->{top} ;
 
 	$self->{globals}->{memory}->{$k} = [ $target, $top ] ;
 	Scalar::Util::weaken( $self->{globals}->{memory}->{$k}->[0] ) ;
+
 	return $target ;
 	}
 
@@ -297,27 +463,43 @@ sub refto {
 
 sub sqlclone {
 	my $tied = shift ;
-
 	my $self = item( $tied )->[1] ;
+	my $out = innerclone( $tied, $self ) ;
+
+	for my $v ( values %{ $self->{globals}->{memory} } ) {
+		my $item = item( $v->[0] ) ;
+		delete $item->[1]->{clone} if $item && $item->[1] ;
+		}
+
+	delete $self->{clone} ;
+	return $out ;
+	}
+
+sub innerclone {
+	my $tied = shift ;
+
+	my $self = @_? $_[0]: item( $tied )->[1] ;
 	return $tied unless defined $self ;
 
-	$self->data ;
+	my $data = $self->data ;
+	my $reference = NoSQL::PL2SQL::Object::item( $data )->[1] || 0 ;
+	return $reference->{clone} if $reference && $reference->{clone} ;
 
 	if ( $self->{reftype} eq 'hashref' ) {
-		my %o = map { $_ => sqlclone( $self->data->{ $_ } ) } 
-				keys %{ $self->{data} } ;
-		return $self->mybless( \%o ) ;
+		my %o = map { $_ => innerclone( $self->data->{ $_ } ) } 
+				keys %$data ;
+		return $self->{clone} = $self->mybless( \%o ) ;
 		}
 	elsif ( $self->{reftype} eq 'arrayref' ) {
-		my @o = map { sqlclone( $_ ) } @{ $self->data } ;
-		return $self->mybless( \@o ) ;
+		my @o = map { innerclone( $_ ) } @$data ;
+		return $self->{clone} = $self->mybless( \@o ) ;
 		}
 	elsif ( $self->{reftype} eq 'scalarref' ) {
 		my $o = ${ $self->data } ;
 		return $self->mybless( \$o ) ;
 		}
 
-	return $self->{data} ;
+	return $self->{clone} = $self->{data} ;
 	}
 
 sub scalarref {
@@ -354,6 +536,8 @@ sub update {
 	push @sorted, [ splice @_, 0, 2 ] while @_ ;
 	map { $self->record->{ $_->[0] } = $_->[1] } @sorted ;
 	$self->{update} = 1 ;
+	$self->{globals}->{clone}->update
+			if $self->{globals}->{clone} ;
 	return $self ;
 	}
 
@@ -389,7 +573,7 @@ sub refrecord {
 	my $ii = item( $self->{data} ) ;
 	return undef unless ref $ii->[1] eq ref $self ;
 
-	my $k = overload::StrVal( $ii->[1] ) ;
+	my $k = $ii->[1]->objectkey ;
 	my $v = $self->{globals}->{memory}->{$k} ;
 	return undef unless $v ;		
 
@@ -432,13 +616,15 @@ sub setreference {
 
 sub newelement {
 	my $clone = shift ;
-	my $self = bless {}, ref $clone ;
+	my $self = bless {}, $clone->package ;
 	map { $self->{$_} = $clone->{$_} } @NoSQL::PL2SQL::members ;
 
 	$self->{parent} = $clone->{top} ;
 	$self->{reftype} = 'item' ;
 	$self->{data} = setreference( shift @_ ) if @_ ;
 	$self->{update} = 1 ;
+	$self->{globals}->{clone}->update
+			if $self->{globals}->{clone} ;
 	return $self ;
 	}
 
@@ -528,6 +714,15 @@ sub updates {
 	return $self ;
 	}
 
+sub objectkey {
+	my $self = shift ;
+	return overload::StrVal( $self ) ;
+	}
+
+sub package {
+	return __PACKAGE__ ;
+	}
+
 sub FETCH {
 	my $self = self( shift @_ ) ;
 	my $k = shift ;
@@ -560,14 +755,17 @@ sub STORE {
 	elsif ( $self->{reftype} eq 'scalarref' ) {
 		$o = $self->{globals}->{scalarrefs}->{ 
 				$self->refto || $self->{top} } ;
+		$o->{globals}->{header} ||= $self->{globals}->{header} ;
 		}
 	else {
 		warn $self->{reftype} ;
 		}
 	
 	$o->CLEAR if grep $_ eq $o->{reftype}, qw( hashref arrayref ) ;
+	$o->{data} = setreference( $v ) ;
 	$o->update( deleted => undef ) ;
-	return $o->{data} = setreference( $v ) ;
+
+	return $o->{data} ;
 	}
 
 sub STORESIZE {
@@ -863,6 +1061,20 @@ C<updates()> is responsible for generating Nodes that are eventually written int
 
 C<scalarok()> returns varying output depending on the complexity of the change.  If the value is completely unchanged, the result is an array containing a single undefined element.  If the value is significantly changed, new NoSQL::PL2SQL::Node's need to be generated, and the method returns an empty array.  If the value is slightly changed (eg a small scalar to another small scalar) the result is an nvp set that reflects the changed properties.
 
+=head1 NoSQL::PL2SQL::Clone
+
+NoSQL::PL2SQL::Clone is one of two helper classes that have been added in v1.2.  The purpose of this class is to override the destructor so that the C<DESTROY> method is called on what is otherwise a self-referencing object.
+
+The C<Clone> instance is always a reference to the top node.  This destructor should always be called before any of the C<Object> nodes are destroyed.
+
+=head1 NoSQL::PL2SQL::Lock
+
+NoSQL::PL2SQL::Lock is the other helper class.  It's instantiated before the first node is destroyed and it's destruction method is called after the last C<Object> node is destroyed.
+
+The C<Lock> instance is applied directly to that objects's record.  Requests to create a second instance on that record, from any PL2SQL client, are blocked until the existing instance is destroyed.
+
+NoSQL::PL2SQL is designed to make incremental updates: Only changed object elements are updated when the object is destroyed.  But when a record is concurrently accessed, its state is indeterminate, and incremental updates cannot be successfully applied.  In that case, the C<Lock> object uses an incrementing header record to detect concurrent record access and performs a full update by writing all the nodes to the database instead. 
+
 =head2 EXPORT
 
 None by default.
@@ -899,9 +1111,21 @@ Fixed: C<DESTROY()> method sometimes loses global values to build sql properties
 
 Fixed: C<DELETE()> override throws error on a missing key
 
+=item 0.06
+
+Added the C<package()> method to C<Object>, which functions the same as Perl's built-in C<ref> function, except it must be explicitly overridden in subclasses.
+
+Added the C<objectkey()> method to C<Object> as a convenience.
+
+Added the I<header> property to C<Object>.  The header references a data source table row that keeps track of locking activity.
+
+Added the NoSQL::PL2SQL::Clone object.  When a PL2SQL object is created, its reference is saved as a global property within the C<memorymap()> operation.  To avoid a destruction deadlock, the reference is saved as a blessed C<Clone> object instead of an C<Object> object.  NoSQL::PL2SQL::Clone has the difficult job of cloning an object that's already been destroyed.
+
+Added the NoSQL::PL2SQL::Lock object which blocks simultaneous record writes to the database.  The C<Lock> object also determines whether to perform a full or incremental update.
+
+The C<sqlclone()> method creates a cloned copy for each container element.  When an element is an internal reference, C<sqlclone()> needs to return the referenced clone.  Some housekeeping code was added to implement this feature correctly.  The changes includes a new method, C<innerclone()>, which isolates the recursive operations.
+
 =back
-
-
 
 =head1 SEE ALSO
 

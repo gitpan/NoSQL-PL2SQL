@@ -86,3 +86,16 @@ Revision history for Perl extension NoSQL::PL2SQL.
 	  invocation:
 	    $dsn->fetch()->perldata
 
+1.20  Tue Mar  5 15:06:19 EST 2013
+	- Minor release:  Implements record locking and full vs partial \		  updates for better concurrent data access:
+	    Added NoSQL::PL2SQL::Lock class definition
+	    Added NoSQL::PL2SQL::Clone class definition
+	    Added method NoSQL::PL2SQL::Object::package
+	    Added method NoSQL::PL2SQL::Object::objectkey
+	    Added method NoSQL::PL2SQL::Object::innerclone
+	- Fixed a bug- now maintains internal references in SQLClone() clones.
+	- Eliminated NoSQL::PL2SQL::DBI::perldata() * NO BACKWARDS CAPABILITY *
+	- Rewrote documentation of NoSQL::PL2SQL::DBI to reflect usage
+	  independent of NoSQL::PL2SQL.
+	- Error handlers are now specifically assigned to a class.
+

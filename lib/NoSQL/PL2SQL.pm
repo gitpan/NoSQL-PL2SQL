@@ -27,7 +27,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '1.14';
+our $VERSION = '1.20';
 
 require XSLoader;
 XSLoader::load('NoSQL::PL2SQL', $VERSION);
@@ -38,7 +38,9 @@ our @members = qw( perldata sqltable globals ) ;
 my @errors = qw( 
 		BlessedCaller InvalidDataSource 
 		InvalidObjectID UnconnectedDataSource
-		DuplicateObject ObjectNotFound CorruptData ) ;
+		DuplicateObject ObjectNotFound CorruptData 
+		TableLockFailure
+		) ;
 my %errors = () ;
 
 sub SQLError {
@@ -49,8 +51,14 @@ sub sqlerror {
 	my $package = shift ;
 	my @nvp = () ;
 	push @nvp, [ splice @_, 0, 2 ] while @_ ;
-	map { $errors{ $_->[0] } = $_->[1] } @nvp ;
-	return @errors ;
+	
+	foreach my $a ( @nvp ) { 
+		my $k = join '::', $package, $a->[0] ;
+		$errors{ $k } = $a->[1] ;
+		}
+	
+	return @errors if wantarray ;
+	return [ keys %errors ] ;
 	}
 
 sub SQLCarp {
@@ -63,9 +71,9 @@ sub sqlcarp {
 	my $error = shift ;
 	$error->{Error} = $key ;
 	
-	return &{ $errors{$key} }( $package, $error, @_ )
-			if exists $errors{$key} 
-			  && ref $errors{$key} eq 'CODE' ;
+	my $k = join '::', $package, $key ;
+	return &{ $errors{$k} }( $package, $error, @_ )
+			if exists $errors{$k} && ref $errors{$k} eq 'CODE' ;
 	carp( $_[-1] ) ;
 	return undef ;
 	}
@@ -108,7 +116,7 @@ sub sqlobject {
 
 	if ( defined $objectid && defined $object ) {
 		my $perldata = $dsn->fetch( [ objectid => $objectid, 0 ],
-				[ objecttype => $package, 1 ] )->perldata ;
+				[ objecttype => $package, 1 ] ) ;
 		return sqlcarp( $package, $errors[4], 
 				  { $errors[4] => $perldata },
 				  @args, "Duplicate object $objectid." )
@@ -120,20 +128,15 @@ sub sqlobject {
 			bless( $object, $package ), $package )
 			if defined $object ;
 
-	my $perlnode = $objectid ;
-
-	my $self = bless {}, 'NoSQL::PL2SQL::Object' ;
-	$self->{sqltable} = $dsn ;
-	$self->{perldata} = $dsn->fetch( [ objectid => $objectid, 0 ],
-			  [ objecttype => $package, 1 ] )->perldata ;
+ 	my $self = bless { sqltable => $dsn }, 'NoSQL::PL2SQL::Clone' ;
+	$self->{perldata} = $dsn->fetch( [ objectid => $objectid ],
+			  [ objecttype => $package, 1 ] ) ;
 	return sqlcarp( $package, $errors[5], {}, @args, 
 			"Object not found for object $objectid." )
 			unless scalar values %{ $self->{perldata} } ;
 
-	## find perldata node if necessary
-	my $pdrecord = $self->record( $objectid ) || { id => 0 } ;
-	( $perlnode ) = map { $_->{id} } 
-			  grep $_->{reftype} eq 'perldata',
+ 	my $perlnode = $self->record( $objectid ) || { id => 0 } ;
+	( $perlnode ) = grep $_->{reftype} eq 'perldata',
 			  values %{ $self->{perldata} }
 			unless exists $self->{perldata}->{$objectid}
 			  && $self->{perldata}->{$objectid}->{reftype}
@@ -141,15 +144,17 @@ sub sqlobject {
 			  
 	return sqlcarp( $package, $errors[6], { $errors[6] => $self }, @args,
 			'Missing perldata node- possible data corruption.' )
-			unless $perlnode ;
+			unless $perlnode->{id} ;
 
-	$self->{top} = $self->record( $perlnode )->{refto} ;
+	$self->{top} = $self->record( $perlnode->{id} )->{refto} ;
 	$self->{package} = $package ;
 	$self->{reftype} = $self->record->{reftype} ;
 	$self->{globals} = { memory => {}, 
 			scalarrefs => {},
 			top => $self->{top},
+			header => $perlnode,
 			} ;
+	$self->{globals}->{clone} = $self ;
 
 	if ( $self->{reftype} eq 'hashref' ) {
 		tie my( %out ), $self ;
@@ -276,35 +281,39 @@ The interface is intended to be a drop-in replacement for Perl's bless operator.
 
 =head1 ERROR HANDLING
 
-If you're comfortable writing closures or anonymous subroutines, V1.03 now allows for error handlers.  An application or implementing class can now resolve problems during run-time.  Errors are only thrown for the C<SQLObject()> method- although C<SQLClone()> can be invoked as an alias for C<SQLObject()>.  C<SQLObject()> throws the following errors:
+If you're comfortable writing closures or anonymous subroutines, V1.03 uses error handlers.  An application or implementing class can now resolve problems during run-time.  Most errors are thrown for the C<SQLObject()> method- although C<SQLClone()> can be invoked as an alias for C<SQLObject()>.  The following errors are defined, the triggering method is shown in parentheses.
 
-=head3 BlessedCaller 
+=head3 BlessedCaller (SQLObject)
 
 C<SQLObject()> should be called as a constructor.  Its first argument must be a classname string.  Otherwise, this error is thrown.  C<SQLClone()> is intended to be called as an object method.
 
-=head3 InvalidDataSource 
+=head3 InvalidDataSource (SQLObject)
 
 If the first argument does not instantiate C<NoSQL::PL2SQL::DBI>, this error is thrown.
 
-=head3 InvalidObjectID
+=head3 InvalidObjectID (SQLObject)
 
 If the first argument is valid, this error is thrown if the second argument is missing.
 
-=head3 UnconnectedDataSource
+=head3 UnconnectedDataSource (SQLObject)
 
 The data source must be connected using the C<DBI::Connect()> method or this error is thrown.
 
-=head3 DuplicateObject 
+=head3 DuplicateObject (SQLObject)
 
 If thrown with 3 valid arguments, C<SQLObject()> will try to assign the second argument as an ObjectID.  If that ObjectID has already been assigned, this error is thrown.
 
-=head3 ObjectNotFound 
+=head3 ObjectNotFound (SQLObject) 
 
 If the second argument is a scalar it is understood to be an ObjectID.  C<SQLObject()> will either retrieve the mapped object or throw this error.
 
-=head3 CorruptData
+=head3 CorruptData (SQLObject)
 
 An ObjectID assigned by C<SQLObject()> matches the record number of the node tree header.  The header record is identified where reftype == 'perldata'.  Otherwise, this error is thrown.
+
+=head3 TableLockFailure (DESTROY)
+
+As of V1.2, PL2SQL attempts a lock operation on the table before writing updates.  Instead of blocking indefinitely, the lock attempt fails after 10 seconds.  This handler should be overridden to safely dump updates and notify an administrator.
 
 By default, C<SQLObject()> errors carp an English text message and return undefined.  A custom error handler could translate the message, return a custom error value, or recurse with different arguments.  Since C<SQLObject()> always returns a non-scalar on success, any scalar can be used to identify an error.
 

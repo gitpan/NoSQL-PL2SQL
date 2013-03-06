@@ -5,7 +5,7 @@
 
 # change 'tests => 1' to 'tests => last_test_to_print';
 
-use Test::More tests => 49 ;
+use Test::More tests => 54 ;
 
 BEGIN { 
 	use_ok('Scalar::Util') ;
@@ -19,13 +19,16 @@ BEGIN {
 	};
 
 #########################
-
-use Storable qw( freeze thaw store retrieve ) ;
+use Storable qw( freeze thaw store retrieve dclone ) ;
 use Digest::MD5 ;
 use Data::Dumper ;
 
+use logger ;
+$debug = logger->new('/tmp/pl2sql.log') ;
+
+my $collision = 1 ;
 my $rebuild = 1 ;
-my $adjust = -4 ;
+my $adjust = -1 ;
 my @retr = () ;
 my @rowct = 0 ;
 my $assignedid = 0 ;
@@ -104,7 +107,7 @@ is( scalar @combined, 25 ) ;
 
 ## Connect to database
 # $dsn->connect('dbi:SQLite:dbname=:memory:','','') ;
-do '/tmp/mysql.pl' ;
+use mysql ;
 $dsn->mysql ;
 
 do {
@@ -142,17 +145,15 @@ sub testchanges {
 
 ## Used for debugging
 sub funchanges {
-warn "\n" ;
 	my $fun = shift ;
 	my $retr = TestRequest->sqlobject( $dsn => $assignedid ) ;
-
 	map { &$fun( $_ ) } ( $retr, $request ) ;
-$dsn->sqldump(1) ;
+store [ $request, $retr->sqlclone ], '/tmp/pl2sql.stor' ;
+$dsn->sqldump( 0 ) ;
 	undef $retr ;
-warn join "\n", '', $dsn->sqldump ;
-	$retr = TestRequest->sqlobject( $dsn => 1 ) ;
+warn join "\n", undef, $dsn->sqldump ;
 
-#warn join "\n", '', Dumper( $retr->sqlclone ), '', Dumper( $request ) ;
+	$retr = TestRequest->sqlobject( $dsn => $assignedid ) ;
 	return ( $retr ) if wantarray ;
 	is( objectvalue( $retr->sqlclone ), objectvalue( $request ) ) ;
 	}
@@ -261,7 +262,7 @@ testchanges( sub {
 # add new internal reference
 @retr = testchanges( sub {
 		$_[0]->{QBMSXML}->{SingSong}->[0] = 
-				[ qw( do re mi ) ] ;
+				bless [ qw( do re mi ) ], 'SingSong' ;
 		push @{ $_[0]->{QBMSXML}->{SingSong} },
 				'wabbit',
 				$_[0]->{QBMSXML}->{SingSong}->[0] ;
@@ -271,19 +272,50 @@ push @{ $request->{QBMSXML}->{SingSong}->[0] }, 'fa' ;
 push @{ $retr[0]->{QBMSXML}->{SingSong}->[0] }, 'fa' ;
 is( $retr[0]->{QBMSXML}->{SingSong}->[-1]->[-1], 'fa' ) ;
 
-@retr = testchanges ( sub {
+## begin new stuff ##
+@retr = () ;
+@retr = testchanges( sub {} ) ;
+
+## legacy bug ##
+my $clone = $retr[0]->sqlclone ;
+$clone->{QBMSXML}->{SingSong}->[0]->[2] = 'jim' ;
+is( $clone->{QBMSXML}->{SingSong}->[2]->[2],
+		$clone->{QBMSXML}->{SingSong}->[0]->[2] ) ;
+## end ##
+
+## v1.20
+my $save = $request ;
+$save = dclone( dclone( $request ) ) if $collision ;
+is( objectvalue( $save ), objectvalue( $request ) ) ;
+
+$retr[0]->{QBMSXML}->{collision} = 1 ;
+$save->{QBMSXML}->{collision} = 1 ;
+@retr = () unless $collision ;
+
+## These changes are transient under collision
+## comment out this test to debug sqlclone
+testchanges( sub {
 		shift @{ $_[0]->{QBMSXML}->{SingSong} } ;
 		} ) ;
 
 @rowct = $dsn->rows_array('SELECT COUNT(*) FROM %s') ;
-is( $rowct[0][0], 56 +$adjust ) ;
+is( $rowct[0][0], 56 +$adjust -$collision ) ;
 
+## These changes are transient under collision
 testchanges( sub {
 		$_[0]->{QBMSXML}->{MsgsRq} = [ qw( fee fi fo fum ) ] ;
 		} ) ;
 
+if ( $collision ) {
+	@retr = () ;
+	$request = $save ;
+	}
+
+testchanges( sub {} ) ;
+
 @rowct = $dsn->rows_array('SELECT COUNT(*) FROM %s') ;
-is( $rowct[0][0], 43 +$adjust ) ;	## should be smaller than 57
+my $ct = $collision? 34: 43 ;
+is( $rowct[0][0], $ct +$adjust ) ;	## should be smaller than 57
 
 @retr = testchanges( sub {
 		$_[0]->{QBMSXML}->{Singon} = $_[0]->{QBMSXML}->{Singup} ;
@@ -291,6 +323,8 @@ is( $rowct[0][0], 43 +$adjust ) ;	## should be smaller than 57
 		$_[0]->{QBMSXML}->{Singup} = \"magic!" ;
 		$_[0]->{QBMSXML}->{Singon} = $_[0]->{QBMSXML}->{Singup} ;
 		} ) ;
+@retr = () ;
+@retr = testchanges( sub {} ) ;
 
 is( ${ $retr[0]->{QBMSXML}->{Singup} }, ${ $retr[0]->{QBMSXML}->{Singon} } ) ;
 
@@ -298,6 +332,7 @@ my $longstring = $alpha x30 ;
 $request->{QBMSXML}->{Singon} = \$longstring ;
 ${ $retr[0]->{QBMSXML}->{Singup} } = $longstring ;
 is( ${ $retr[0]->{QBMSXML}->{Singon} }, ${ $request->{QBMSXML}->{Singon} } ) ;
+
 @retr = () ;
 
 testchanges( sub {
@@ -351,5 +386,15 @@ testchanges( sub {} ) ;
 testchanges( sub {
 	${ $_[0] } = 'turquoise' ;
 	} ) ;
+
+my $o = TestRequest->SQLObject( $dsn, {} ) ;
+$assignedid = $o->SQLObjectID ;
+$o->{NoSQL} = 'PL2SQL' ;
+$save = dclone( dclone( $o->sqlclone ) ) ;
+undef $o ;
+
+$o = TestRequest->SQLClone( $dsn, $assignedid ) ;
+
+is( objectvalue( $save ), objectvalue( $o ) ) ;
 
 1

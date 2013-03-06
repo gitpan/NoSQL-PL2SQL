@@ -5,7 +5,7 @@
 
 # change 'tests => 1' to 'tests => last_test_to_print';
 
-use Test::More tests => 56 ;
+use Test::More tests => 59 ;
 
 BEGIN { 
 	use_ok('Scalar::Util') ;
@@ -20,12 +20,13 @@ BEGIN {
 
 #########################
 
-use Storable qw( freeze thaw store retrieve ) ;
+use Storable qw( freeze thaw store retrieve dclone ) ;
 use Digest::MD5 ;
 use Data::Dumper ;
 
+my $collision = 1 ;
 my $rebuild = 1 ;
-my $adjust = 3 ;
+my $adjust = 6 ;
 my @retr = () ;
 my @rowct = 0 ;
 my $assignedid = 0 ;
@@ -276,20 +277,48 @@ push @{ $request->{QBMSXML}->{SingSong}->[0] }, 'fa' ;
 push @{ $retr[0]->{QBMSXML}->{SingSong}->[0] }, 'fa' ;
 is( $retr[0]->{QBMSXML}->{SingSong}->[-1]->[-1], 'fa', 
 		'internal reference baseline' ) ;
+@retr = () ;
 
-@retr = testchanges ( 'internal reference to new element', sub {
+@retr = testchanges( undef, sub {} ) ;
+
+my $clone = $retr[0]->sqlclone ;
+$clone->{QBMSXML}->{SingSong}->[0]->[2] = 'jim' ;
+is( $clone->{QBMSXML}->{SingSong}->[2]->[2],
+		$clone->{QBMSXML}->{SingSong}->[0]->[2],
+		'clone internal reference' ) ;
+
+## v1.20
+my $save = $request ;
+$save = dclone( dclone( $request ) ) if $collision ;
+is( objectvalue( $save ), objectvalue( $request ), 'dclone operation' ) ;
+
+$retr[0]->{QBMSXML}->{collision} = 1 ;
+$save->{QBMSXML}->{collision} = 1 ;
+@retr = () unless $collision ;
+
+## These changes are transient under collision
+testchanges( 'internal reference to new element', sub {
 		shift @{ $_[0]->{QBMSXML}->{SingSong} } ;
 		} ) ;
 
 @rowct = $dsn->rows_array('SELECT COUNT(*) FROM %s') ;
-is( $rowct[0][0], 56 +$adjust, 'internal record count' ) ;
+is( $rowct[0][0], 56 +$adjust -$collision, 'internal record count' ) ;
 
+## These changes are transient under collision
 testchanges( 'delete orphaned records', sub {
 		$_[0]->{QBMSXML}->{MsgsRq} = [ qw( fee fi fo fum ) ] ;
 		} ) ;
 
+if ( $collision ) {
+	@retr = () ;
+	$request = $save ;
+	}
+
+## end v1.20
+
 @rowct = $dsn->rows_array('SELECT COUNT(*) FROM %s') ;
-is( $rowct[0][0], 43 +$adjust, 'confirm deleted records' ) ;
+my $ct = $collision? 27: 43 ;
+is( $rowct[0][0], $ct +$adjust, 'confirm deleted records' ) ;
 
 @retr = testchanges( 'delete internal reference', sub {
 		$_[0]->{QBMSXML}->{Singon} = $_[0]->{QBMSXML}->{Singup} ;
