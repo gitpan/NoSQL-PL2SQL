@@ -7,7 +7,7 @@ WriteMakefile(
     VERSION_FROM      => 'lib/NoSQL/PL2SQL.pm', # finds $VERSION
     PREREQ_PM         => {
 			XML::Parser => 2.41,
-			XML::Parser::Nodes => 0.04,
+			XML::Parser::Nodes => 0.08,
 			DBI => 1.57,
 			DBD::SQLite => 1.37,	## For testing
 			}, # e.g., Module::Name => 1.1

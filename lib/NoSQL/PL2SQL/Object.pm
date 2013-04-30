@@ -183,7 +183,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 # Preloaded methods go here.
 
@@ -373,6 +373,7 @@ sub load {
 	return $self->{data} ;
 	}
 
+## refactoring?  may duplicate Perldata::fetchextract()
 sub loadscalarref {
 	my $self = shift ;
 	my $refto = shift ;
@@ -408,7 +409,6 @@ sub data {
 	my $refto = $self->record->{refto} ;
 
 	my @args = @_ ;
-	push @args, 0 if @args ;
 
 	if ( $self->{reftype} eq 'hashref' ) {
 		unless ( $self->{data} ) {
@@ -420,8 +420,10 @@ sub data {
 			bless $self->{data}, $blesstype if $blesstype ;
 			}
 
-		return item( $self->{data}->{ $args[0] } )->[ $args[1] ] 
-				if @args ;
+		if ( @args ) {
+			my $item = item( $self->{data}->{ $args[0] } ) ;
+			return @args == 1? $item: $item->[ $args[1] ] ;
+			}
 		}
 
 	elsif ( $self->{reftype} eq 'arrayref' ) {
@@ -439,13 +441,17 @@ sub data {
 			bless $self->{data}, $blesstype if $blesstype ;
 			}
 
-		return item( $self->{data}->[ $args[0] ] )->[ $args[1] ]
-				if @args ;
+		if ( @args ) {
+			my $item = item( $self->{data}->[ $args[0] ] ) ;
+			return @args == 1? $item: $item->[ $args[1] ] ;
+			}
 		}
 
 	elsif ( $self->{reftype} eq 'scalarref' ) {
-		return @args? $self->scalarref->[$args[-1]]:
-				$self->topnode( $self->{top} ) ;
+		my $top = $self->record->{refto} || $self->{top} ;
+		return @args == 2? $self->scalarref->[0]:
+				@args == 1? $self->scalarref:
+				$self->topnode( $top ) ;
 		}
 
 	else {
@@ -726,7 +732,12 @@ sub package {
 sub FETCH {
 	my $self = self( shift @_ ) ;
 	my $k = shift ;
-	return $self->data( $k ) ;
+	my $item = $self->data( $k ) ;
+
+	return ref( $item->[0] )
+			  && $item->[1]->{top} 
+			  && $item->[1]->{reftype} eq 'scalarref'?
+			$item->[1]->data: $item->[0] ;
 	}
 
 sub STORE {
@@ -835,14 +846,15 @@ sub SPLICE {
 	}
 
 sub DELETE {
+	my $rv = FETCH( @_ ) ;
 	my $self = self( shift @_ ) ;
 	my $k = shift ;
 	my $obliterate = shift ;
 
 	$self->sqlclone ;	## need to expose all references
 
-	my $rv = $self->data( $k ) ;
-	my $o = $self->data( $k, 1 ) ;
+	my $item = $self->data( $k ) ;
+	my $o = $item->[1] ;
 	return undef unless $o ;
 
 	$o->CLEAR unless $o->{reftype} eq 'item' ;
@@ -1124,6 +1136,10 @@ Added the NoSQL::PL2SQL::Clone object.  When a PL2SQL object is created, its ref
 Added the NoSQL::PL2SQL::Lock object which blocks simultaneous record writes to the database.  The C<Lock> object also determines whether to perform a full or incremental update.
 
 The C<sqlclone()> method creates a cloned copy for each container element.  When an element is an internal reference, C<sqlclone()> needs to return the referenced clone.  Some housekeeping code was added to implement this feature correctly.  The changes includes a new method, C<innerclone()>, which isolates the recursive operations.
+
+=item 0.08
+
+C<FETCH()> needs an exception for scalar references.  Performed a little refactoring among C<data()>, C<FETCH()>, and C<DELETE()> to isolate this requirement.
 
 =back
 

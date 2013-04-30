@@ -21,7 +21,7 @@ our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } ) ;
 
 our @EXPORT = qw() ;
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 # Preloaded methods go here.
 
@@ -256,17 +256,22 @@ sub insertall {
 	my $dsn = shift ;
 	my %ids = () ;
 	my %refs = () ;
+	my %scalars = () ;
 
 	foreach my $self ( @_ ) {
 		my $pid = $self->parentid || '' ;
 
-		$self->{key} = $self->reference( $refs{ $self->memory } )
-				if $self->memory 
-				&& exists $refs{ $self->memory } ;
+		if ( $self->memory && exists $refs{ $self->memory } ) {
+			$self->{key} = $self->reference( 
+					$refs{ $self->memory } 
+					) ;
+			}
 		$self->{key} ||= '' ;
 				
-		$self->{sql}->{refto} ||= $ids{ $self->memory } || 0
-				if $self->memory ;
+		$self->{sql}->{refto} ||= $ids{ $self->memory } 
+				|| $scalars{ $self->memory }
+				|| 0 if $self->memory ;
+
 		$self->{sql}->{item} = $ids{ $pid } || 0
 				if exists $ids{ $pid } 
 				  && $self->{key}
@@ -283,7 +288,10 @@ sub insertall {
 				if exists $self->{sql}->{stringdata} ;
 
 		$self->sql( $dsn ) ;
-
+	
+		$scalars{ $self->memory } ||= $self->{sql}->{id} 
+				if $self->memory
+				&& $self->{key} eq 'scalarref' ;
 		$ids{string} = undef unless $self->{key} eq 'string' ;
 		$ids{ $pid } = $self->{sql}->{id} ;
 		$refs{ $self->memory } = $self->{sql} if $self->memory ;
@@ -405,6 +413,11 @@ C<insertall()> more durable approach for 0.04
 =item 0.06	
 
 C<insertall()> initializes the I<deleted> and I<intdata> properties of the header node sql record.
+
+=item 0.07	
+
+Added %scalars to C<insertall()> method.  Needs to be separate from the 
+%refs set.
 
 =back
 

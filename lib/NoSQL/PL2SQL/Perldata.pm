@@ -125,7 +125,7 @@ sub item {
 	$rv->[1] = $o->{intdata} *1 if defined $o->{intdata} ;
 	$rv->[1] = $o->{floatdata} *1.0 if defined $o->{floatdata} ;
 	$rv->[1] = $o->{stringdata} if defined $o->{stringdata} ;
-	warn $rv->[1] = $o->{stringrepr} if @$rv == 1 ;
+	warn $rv->[1] = $o->{stringrepr} if @$rv == 1 && ! $o->{refto} ;
 
 	$rv->[1] .= item( $self, $o->{chainedstring} )->[1] 
 			if defined $o->{stringdata} && $o->{chainedstring} ;

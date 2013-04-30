@@ -99,3 +99,11 @@ Revision history for Perl extension NoSQL::PL2SQL.
 	  independent of NoSQL::PL2SQL.
 	- Error handlers are now specifically assigned to a class.
 
+1.21  Mon Apr 29 23:37:09 EDT 2013
+	- Updated to reflect dependencies
+	- Refactored NoSQL::PL2SQL::Object
+	    data()
+	    FETCH()
+	    DELETE()
+	- Added internal %scalars to NoSQL::PL2SQL::Nodes::insertall
+
